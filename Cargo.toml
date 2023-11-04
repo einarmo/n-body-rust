@@ -1,0 +1,13 @@
+[workspace]
+members = [
+  "space",
+  "shaders"
+]
+resolver = "2"
+
+[profile.release.build-override]
+opt-level = 3
+codegen-units = 16
+[profile.dev.build-override]
+opt-level = 3
+
