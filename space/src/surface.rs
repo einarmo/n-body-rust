@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use anyhow::anyhow;
 use wgpu::{Adapter, CreateSurfaceError, Device, Queue, Surface, SurfaceConfiguration};
 use winit::{
@@ -23,7 +25,7 @@ pub fn get_window(init_w: f32, init_h: f32) -> anyhow::Result<WindowState> {
 pub struct SurfaceState {
     pub surface: Result<SurfaceWithConfig, CreateSurfaceError>,
     pub adapter: Adapter,
-    pub device: Device,
+    pub device: Arc<Device>,
     pub queue: Queue,
 }
 
@@ -70,7 +72,7 @@ pub async fn get_surface(window: &Window) -> anyhow::Result<SurfaceState> {
     Ok(SurfaceState {
         surface,
         adapter,
-        device,
+        device: Arc::new(device),
         queue,
     })
 }

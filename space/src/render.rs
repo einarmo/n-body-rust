@@ -1,19 +1,20 @@
-use futures::channel::oneshot;
+use std::sync::Arc;
+
 use wgpu::{
-    Buffer, BufferDescriptor, BufferSlice, BufferUsages, CommandEncoder, PrimitiveState,
-    RenderPassDescriptor, RenderPipeline, TextureView, VertexAttribute, VertexBufferLayout,
+    util::DeviceExt, Buffer, CommandEncoder, Device, PrimitiveState, Queue, RenderPassDescriptor,
+    RenderPipeline, TextureView, VertexAttribute, VertexBufferLayout,
 };
 use winit::{dpi::PhysicalSize, window::Window};
 
 use crate::{surface::SurfaceState, ShaderConstants};
 
-const TRAIL_MAX_LENGTH: usize = 10_000;
-const OBJECT_STRIDE: usize = TRAIL_MAX_LENGTH * std::mem::size_of::<Vertex>();
+pub const TRAIL_MAX_LENGTH: usize = 100;
+pub const OBJECT_STRIDE: usize = TRAIL_MAX_LENGTH * std::mem::size_of::<Vertex>();
 
 #[repr(C)]
 #[derive(Clone, Copy, Default, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct Vertex {
-    pos: [f32; 3],
+    pub pos: [f32; 3],
 }
 
 #[derive(Clone)]
@@ -25,30 +26,83 @@ impl Default for ObjectTrailInner {
     }
 }
 
-#[derive(Clone, Default)]
-pub struct ObjectTrail {
-    points: Box<ObjectTrailInner>,
+pub struct Objects {
+    buff: Vec<Vertex>,
+    num_objects: usize,
     head: usize,
     tail: usize,
+    pending_head: usize,
+    pending_tail: usize,
 }
 
-pub struct Renderer<'a> {
-    surface: &'a mut SurfaceState,
-    window: &'a Window,
+impl Objects {
+    pub fn new(num_objects: usize) -> Self {
+        Self {
+            buff: vec![Default::default(); num_objects * TRAIL_MAX_LENGTH],
+            num_objects,
+            head: 0,
+            tail: 0,
+            pending_head: 0,
+            pending_tail: 0,
+        }
+    }
+
+    fn inc_circular(head: &mut usize, tail: &mut usize, len: usize) {
+        *tail = (*tail + 1) % len;
+        if *tail == *head {
+            *head = (*head + 1) % len;
+        }
+    }
+
+    pub fn push_items(&mut self, batch: PointBatch) {
+        assert!(batch.len() == self.num_objects);
+
+        for point in batch.into_iter() {
+            self.buff[self.pending_tail] = point;
+
+            Self::inc_circular(
+                &mut self.pending_head,
+                &mut self.pending_tail,
+                TRAIL_MAX_LENGTH * self.num_objects,
+            );
+        }
+
+        Self::inc_circular(&mut self.head, &mut self.tail, TRAIL_MAX_LENGTH);
+    }
+
+    pub fn flush_to_buffer(&mut self, buffer: &Buffer, queue: &Queue) {
+        let offset = (self.pending_head * std::mem::size_of::<Vertex>()) as u64;
+        if self.pending_tail > self.pending_head {
+            let slice = &self.buff[self.pending_head..self.pending_tail];
+            queue.write_buffer(buffer, offset, bytemuck::cast_slice(slice));
+        } else if self.pending_tail < self.pending_head {
+            queue.write_buffer(
+                buffer,
+                offset,
+                bytemuck::cast_slice(&self.buff[self.pending_head..]),
+            );
+            queue.write_buffer(
+                buffer,
+                0,
+                bytemuck::cast_slice(&self.buff[0..self.pending_tail]),
+            );
+        }
+        self.pending_head = self.pending_tail;
+    }
+}
+
+pub struct Renderer {
+    surface: SurfaceState,
+    window_size: PhysicalSize<u32>,
     pipeline: RenderPipeline,
-    objects: Vec<ObjectTrail>,
-    buffer: Buffer,
+    objects: Objects,
+    index_buffer: Buffer,
 }
 
-impl<'a> Renderer<'a> {
-    pub fn new(surface: &'a mut SurfaceState, window: &'a Window, num_objects: usize) -> Self {
-        let buffer = surface.device.create_buffer(&BufferDescriptor {
-            label: Some("pos_buffer"),
-            size: (num_objects * OBJECT_STRIDE) as u64,
-            usage: BufferUsages::VERTEX | BufferUsages::MAP_WRITE,
-            mapped_at_creation: false,
-        });
+pub type PointBatch = Vec<Vertex>;
 
+impl Renderer {
+    pub fn new(surface: SurfaceState, window: &Window, num_objects: usize) -> Self {
         let shader = wgpu::include_spirv_raw!(env!("shaders.spv"));
 
         let pipeline_layout =
@@ -115,57 +169,36 @@ impl<'a> Renderer<'a> {
                 multiview: None,
             });
 
+        let mut index_list: Vec<u32> = Vec::with_capacity(TRAIL_MAX_LENGTH * 2);
+
+        for _ in 0..2 {
+            for i in 0..TRAIL_MAX_LENGTH {
+                index_list.push((i * num_objects) as u32);
+            }
+        }
+
+        let index_buffer = surface
+            .device
+            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("Index Buffer"),
+                contents: bytemuck::cast_slice(&index_list),
+                usage: wgpu::BufferUsages::INDEX,
+            });
+
         Self {
             surface,
-            buffer,
-            window,
+            window_size: window.inner_size(),
             pipeline,
-            objects: vec![Default::default(); num_objects],
+            objects: Objects::new(num_objects),
+            index_buffer,
         }
     }
 
-    pub async fn write_to_buffer(&mut self) {
-        let (send, recv) = oneshot::channel();
-        let slice = self.buffer.slice(..);
-        self.map_buffer(&slice, send);
-        println!("Wait for buffer to map...");
-        self.surface.device.poll(wgpu::MaintainBase::Wait);
-        println!("Wait for buffer to map...");
-
-        let ok = recv.await.unwrap();
-        println!("Buffer mapped");
-        if !ok {
-            return;
-        }
-
-        let obj = self.objects.get_mut(0).unwrap();
-        obj.points.0[0] = Vertex {
-            pos: [0.0, 0.0, 0.0],
-        };
-        obj.points.0[1] = Vertex {
-            pos: [1.0, 1.0, 0.0],
-        };
-        obj.points.0[2] = Vertex {
-            pos: [1.0, 0.0, 0.0],
-        };
-        obj.points.0[3] = Vertex {
-            pos: [0.0, 1.0, 0.0],
-        };
-        obj.tail = 2;
-
-        let mut view = slice.get_mapped_range_mut();
-        for (idx, obj) in self.objects.iter_mut().enumerate() {
-            let start = idx * OBJECT_STRIDE;
-            let end = start + OBJECT_STRIDE;
-
-            let slice = bytemuck::cast_slice(&obj.points.0[..]);
-            view[start..end].copy_from_slice(slice);
-        }
-        drop(view);
-        self.buffer.unmap();
+    pub fn push_point_batch(&mut self, batch: PointBatch) {
+        self.objects.push_items(batch);
     }
 
-    pub fn redraw(&mut self) {
+    pub fn redraw(&mut self, buffer: &Buffer) {
         let Ok(surface_with_config) = &mut self.surface.surface else {
             return;
         };
@@ -188,6 +221,8 @@ impl<'a> Renderer<'a> {
             }
         };
 
+        self.objects.flush_to_buffer(&buffer, &self.surface.queue);
+
         let mut output_view = output
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
@@ -196,7 +231,7 @@ impl<'a> Renderer<'a> {
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
 
-        self.pass(&mut encoder, &mut output_view);
+        self.pass(&mut encoder, &mut output_view, buffer);
 
         self.surface.queue.submit(Some(encoder.finish()));
 
@@ -211,10 +246,15 @@ impl<'a> Renderer<'a> {
                 surface_with_config.config.height = size.height;
                 surface_with_config.configure(&self.surface.device);
             }
+            self.window_size = size;
         }
     }
 
-    fn pass(&self, encoder: &mut CommandEncoder, output_view: &mut TextureView) {
+    pub fn device(&self) -> Arc<Device> {
+        self.surface.device.clone()
+    }
+
+    fn pass(&self, encoder: &mut CommandEncoder, output_view: &mut TextureView, buffer: &Buffer) {
         let mut rpass = encoder.begin_render_pass(&RenderPassDescriptor {
             label: None,
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -230,41 +270,28 @@ impl<'a> Renderer<'a> {
         });
 
         let push_constants = ShaderConstants {
-            width: self.window.inner_size().width,
-            height: self.window.inner_size().height,
+            width: self.window_size.width,
+            height: self.window_size.height,
             time: 0.0,
         };
 
         rpass.set_pipeline(&self.pipeline);
-        rpass.set_vertex_buffer(0, self.buffer.slice(..));
+        rpass.set_vertex_buffer(0, buffer.slice(..));
+        rpass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
+
         rpass.set_push_constants(
             wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
             0,
             bytemuck::bytes_of(&push_constants),
         );
-        for (idx, obj) in self.objects.iter().enumerate() {
-            if obj.tail > obj.head {
-                let offset = (idx * TRAIL_MAX_LENGTH) as u32;
-                rpass.draw(offset..(offset + obj.tail as u32), 0..1);
-            }
+        let head = self.objects.head as u32;
+        let index_range = if self.objects.tail >= self.objects.head {
+            head..(head + self.objects.tail as u32)
+        } else {
+            head..((TRAIL_MAX_LENGTH + self.objects.tail) as u32)
+        };
+        for idx in 0..(self.objects.num_objects) {
+            rpass.draw_indexed(index_range.clone(), idx as i32, 0..1);
         }
-    }
-
-    fn map_buffer(&self, slice: &BufferSlice<'_>, cb: oneshot::Sender<bool>) {
-        slice.map_async(wgpu::MapMode::Write, |r| {
-            let _ = cb.send(r.is_ok());
-        })
-    }
-
-    // Assumes buffer is mapped
-    fn flush_to_buffer(&mut self, buffer: BufferSlice<'_>) {
-        let mut view = buffer.get_mapped_range_mut();
-        for (idx, obj) in self.objects.iter_mut().enumerate() {
-            let start = idx * OBJECT_STRIDE;
-            let end = start + OBJECT_STRIDE;
-
-            view[start..end].copy_from_slice(bytemuck::cast_slice(&obj.points.0[0..1]));
-        }
-        self.buffer.unmap();
     }
 }
