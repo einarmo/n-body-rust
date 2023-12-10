@@ -1,8 +1,11 @@
 use std::sync::Arc;
 
+use bytemuck::cast_slice;
 use wgpu::{
-    util::DeviceExt, Buffer, CommandEncoder, Device, PrimitiveState, Queue, RenderPassDescriptor,
-    RenderPipeline, TextureView, VertexAttribute, VertexBufferLayout,
+    util::{BufferInitDescriptor, DeviceExt},
+    BlendComponent, BlendFactor, BlendState, Buffer, BufferUsages, CommandEncoder, Device,
+    PrimitiveState, Queue, RenderPassDescriptor, RenderPipeline, TextureView, VertexAttribute,
+    VertexBufferLayout,
 };
 use winit::{dpi::PhysicalSize, window::Window};
 
@@ -11,10 +14,13 @@ use crate::{surface::SurfaceState, ShaderConstants};
 pub const TRAIL_MAX_LENGTH: usize = 100;
 pub const OBJECT_STRIDE: usize = TRAIL_MAX_LENGTH * std::mem::size_of::<Vertex>();
 
+pub type Vec3 = [f32; 3];
+
 #[repr(C)]
-#[derive(Clone, Copy, Default, bytemuck::Pod, bytemuck::Zeroable)]
+#[derive(Clone, Copy, Debug, Default, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct Vertex {
-    pub pos: [f32; 3],
+    pub pos: Vec3,
+    pub idx: u32,
 }
 
 #[derive(Clone)]
@@ -33,6 +39,12 @@ pub struct Objects {
     tail: usize,
     pending_head: usize,
     pending_tail: usize,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+struct ObjectInstance {
+    color: [f32; 3],
 }
 
 impl Objects {
@@ -58,7 +70,10 @@ impl Objects {
         assert!(batch.len() == self.num_objects);
 
         for point in batch.into_iter() {
-            self.buff[self.pending_tail] = point;
+            self.buff[self.pending_tail] = Vertex {
+                pos: point,
+                idx: self.tail as u32,
+            };
 
             Self::inc_circular(
                 &mut self.pending_head,
@@ -74,7 +89,8 @@ impl Objects {
         let offset = (self.pending_head * std::mem::size_of::<Vertex>()) as u64;
         if self.pending_tail > self.pending_head {
             let slice = &self.buff[self.pending_head..self.pending_tail];
-            queue.write_buffer(buffer, offset, bytemuck::cast_slice(slice));
+            let byte_slice = bytemuck::cast_slice(slice);
+            queue.write_buffer(buffer, offset, byte_slice);
         } else if self.pending_tail < self.pending_head {
             queue.write_buffer(
                 buffer,
@@ -97,13 +113,69 @@ pub struct Renderer {
     pipeline: RenderPipeline,
     objects: Objects,
     index_buffer: Buffer,
+    instance_buffer: Buffer,
 }
 
-pub type PointBatch = Vec<Vertex>;
+pub type PointBatch = Vec<Vec3>;
 
 impl Renderer {
     pub fn new(surface: SurfaceState, window: &Window, num_objects: usize) -> Self {
         let shader = wgpu::include_spirv_raw!(env!("shaders.spv"));
+
+        /* let color_buffer = surface.device.create_buffer_init(&BufferInitDescriptor {
+            label: Some("Color buffer"),
+            contents: bytemuck::cast_slice(&[1.0f32, 1.0f32, 1.0f32, 1.0f32, 0.0f32, 0.0f32]),
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        });
+
+        let color_bind_group_layout =
+            surface
+                .device
+                .create_bind_group_layout(&BindGroupLayoutDescriptor {
+                    label: Some("Color buffer layout"),
+                    entries: &[BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Uniform,
+                            has_dynamic_offset: true,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    }],
+                });
+
+        let color_bind_group = surface.device.create_bind_group(&BindGroupDescriptor {
+            label: Some("Color buffer bind group"),
+            layout: &color_bind_group_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: color_buffer.as_entire_binding(),
+            }],
+        }); */
+
+        let instance_buffer_layout = VertexBufferLayout {
+            array_stride: std::mem::size_of::<ObjectInstance>() as u64,
+            step_mode: wgpu::VertexStepMode::Instance,
+            attributes: &[VertexAttribute {
+                format: wgpu::VertexFormat::Float32x3,
+                offset: 0,
+                shader_location: 2,
+            }],
+        };
+
+        let instance_buffer = surface.device.create_buffer_init(&BufferInitDescriptor {
+            label: Some("instance buffer"),
+            contents: cast_slice(&[
+                ObjectInstance {
+                    color: [1.0, 1.0, 1.0],
+                },
+                ObjectInstance {
+                    color: [1.0, 0.0, 0.0],
+                },
+            ]),
+            usage: BufferUsages::VERTEX,
+        });
 
         let pipeline_layout =
             surface
@@ -132,15 +204,25 @@ impl Renderer {
                 vertex: wgpu::VertexState {
                     module: &shader_module,
                     entry_point: "main_vs",
-                    buffers: &[VertexBufferLayout {
-                        array_stride: std::mem::size_of::<Vertex>() as u64,
-                        step_mode: wgpu::VertexStepMode::Vertex,
-                        attributes: &[VertexAttribute {
-                            format: wgpu::VertexFormat::Float32x3,
-                            offset: 0,
-                            shader_location: 0,
-                        }],
-                    }],
+                    buffers: &[
+                        VertexBufferLayout {
+                            array_stride: std::mem::size_of::<Vertex>() as u64,
+                            step_mode: wgpu::VertexStepMode::Vertex,
+                            attributes: &[
+                                VertexAttribute {
+                                    format: wgpu::VertexFormat::Float32x3,
+                                    offset: 0,
+                                    shader_location: 0,
+                                },
+                                VertexAttribute {
+                                    format: wgpu::VertexFormat::Uint32,
+                                    offset: 3 * std::mem::size_of::<f32>() as u64,
+                                    shader_location: 1,
+                                },
+                            ],
+                        },
+                        instance_buffer_layout,
+                    ],
                 },
                 primitive: PrimitiveState {
                     topology: wgpu::PrimitiveTopology::LineStrip,
@@ -162,7 +244,14 @@ impl Renderer {
                     entry_point: "main_fs",
                     targets: &[Some(wgpu::ColorTargetState {
                         format: color_format,
-                        blend: None,
+                        blend: Some(BlendState {
+                            color: BlendComponent {
+                                src_factor: BlendFactor::SrcAlpha,
+                                dst_factor: BlendFactor::OneMinusSrcAlpha,
+                                operation: wgpu::BlendOperation::Add,
+                            },
+                            alpha: BlendComponent::OVER,
+                        }),
                         write_mask: wgpu::ColorWrites::ALL,
                     })],
                 }),
@@ -191,6 +280,7 @@ impl Renderer {
             pipeline,
             objects: Objects::new(num_objects),
             index_buffer,
+            instance_buffer,
         }
     }
 
@@ -198,7 +288,7 @@ impl Renderer {
         self.objects.push_items(batch);
     }
 
-    pub fn redraw(&mut self, buffer: &Buffer) {
+    pub fn redraw(&mut self, buffer: &Buffer, tick: u32) {
         let Ok(surface_with_config) = &mut self.surface.surface else {
             return;
         };
@@ -231,7 +321,7 @@ impl Renderer {
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
 
-        self.pass(&mut encoder, &mut output_view, buffer);
+        self.pass(&mut encoder, &mut output_view, buffer, tick);
 
         self.surface.queue.submit(Some(encoder.finish()));
 
@@ -254,7 +344,13 @@ impl Renderer {
         self.surface.device.clone()
     }
 
-    fn pass(&self, encoder: &mut CommandEncoder, output_view: &mut TextureView, buffer: &Buffer) {
+    fn pass(
+        &self,
+        encoder: &mut CommandEncoder,
+        output_view: &mut TextureView,
+        buffer: &Buffer,
+        tick: u32,
+    ) {
         let mut rpass = encoder.begin_render_pass(&RenderPassDescriptor {
             label: None,
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -269,14 +365,25 @@ impl Renderer {
             ..Default::default()
         });
 
+        let head = self.objects.head as u32;
+        let index_range = if self.objects.tail >= self.objects.head {
+            head..(head + self.objects.tail as u32)
+        } else {
+            head..((TRAIL_MAX_LENGTH + self.objects.tail) as u32)
+        };
+
         let push_constants = ShaderConstants {
             width: self.window_size.width,
             height: self.window_size.height,
-            time: 0.0,
+            time: tick,
+            total_buffer_size: TRAIL_MAX_LENGTH as u32,
+            start_index: index_range.start,
+            end_index: index_range.end,
         };
 
         rpass.set_pipeline(&self.pipeline);
         rpass.set_vertex_buffer(0, buffer.slice(..));
+        rpass.set_vertex_buffer(1, self.instance_buffer.slice(..));
         rpass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
 
         rpass.set_push_constants(
@@ -284,14 +391,10 @@ impl Renderer {
             0,
             bytemuck::bytes_of(&push_constants),
         );
-        let head = self.objects.head as u32;
-        let index_range = if self.objects.tail >= self.objects.head {
-            head..(head + self.objects.tail as u32)
-        } else {
-            head..((TRAIL_MAX_LENGTH + self.objects.tail) as u32)
-        };
+
         for idx in 0..(self.objects.num_objects) {
-            rpass.draw_indexed(index_range.clone(), idx as i32, 0..1);
+            let idxu = idx as u32;
+            rpass.draw_indexed(index_range.clone(), idx as i32, idxu..(idxu + 1));
         }
     }
 }

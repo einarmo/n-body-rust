@@ -12,7 +12,7 @@ use winit::{
 };
 
 use crate::{
-    render::{Renderer, Vertex, OBJECT_STRIDE, TRAIL_MAX_LENGTH},
+    render::{Renderer, OBJECT_STRIDE, TRAIL_MAX_LENGTH},
     surface::SurfaceState,
 };
 
@@ -98,10 +98,10 @@ pub async fn run_event_loop(
                         tick += 1;
                         let r = 1.0 - ((tick as f32) / (TRAIL_MAX_LENGTH as f32));
                         renderer.push_point_batch(vec![
-                            Vertex { pos: [(tick as f32 / 10.0).sin() * r, (tick as f32 / 10.0).cos() * r, 0.0] },
-                            Vertex { pos: [(tick as f32 / 10.0).cos() * r, (tick as f32 / 10.0).sin() * r, 0.0] }
+                            [(tick as f32 / 10.0).sin() * r, (tick as f32 / 10.0).cos() * r, 0.0],
+                            [(tick as f32 / 10.0).cos() * r, (tick as f32 / 10.0).sin() * r, 0.0]
                         ]);
-                        renderer.redraw(&buffer.buffer);
+                        renderer.redraw(&buffer.buffer, tick);
                     },
                     RuntimeEvent::Close => {
                         println!("Close event loop");

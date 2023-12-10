@@ -18,7 +18,10 @@ mod surface;
 struct ShaderConstants {
     pub width: u32,
     pub height: u32,
-    pub time: f32,
+    pub time: u32,
+    pub total_buffer_size: u32,
+    pub start_index: u32,
+    pub end_index: u32,
 }
 
 fn main() -> anyhow::Result<()> {
