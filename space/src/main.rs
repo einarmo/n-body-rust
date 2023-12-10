@@ -4,14 +4,17 @@ use surface::{get_surface, get_window};
 use tokio::runtime::Builder;
 
 use crate::{
+    camera::Camera,
     event_loop::{run_event_loop, BufferWrapper},
     render::Renderer,
 };
 
+mod camera;
 mod event_loop;
 mod objects;
 mod pipeline;
 mod render;
+mod sim;
 mod surface;
 
 #[derive(Copy, Clone, Pod, Zeroable)]
@@ -35,9 +38,10 @@ fn main() -> anyhow::Result<()> {
     let task = runtime.block_on(async {
         let surface = get_surface(&window.window).await.unwrap();
         let buffer = BufferWrapper::new(num_objects, &surface);
-        let renderer = Renderer::new(surface, &window.window, num_objects);
+        let camera = Camera::new(window.window.inner_size(), &surface.device);
+        let renderer = Renderer::new(surface, &window.window, num_objects, &camera);
 
-        tokio::spawn(run_event_loop(renderer, send.clone(), recv, buffer))
+        tokio::spawn(run_event_loop(renderer, send.clone(), recv, buffer, camera))
     });
 
     run_winit_loop(window.event_loop, send.clone())?;

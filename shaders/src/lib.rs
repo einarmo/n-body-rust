@@ -19,6 +19,7 @@ pub fn main_vs(
     input_pos: Vec3,
     input_idx: u32,
     instance_color: Vec3,
+    #[spirv(uniform, descriptor_set = 0, binding = 0)] camera_uniform: &spirv_std::glam::Mat4,
     #[spirv(position, invariant)] out_pos: &mut Vec4,
     out_color: &mut Vec4,
 ) {
@@ -30,7 +31,7 @@ pub fn main_vs(
         % constants.total_buffer_size;
 
     let floating_offset = index_offset as f32 / current_vertex_count as f32;
-    *out_pos = vec4(input_pos.x, input_pos.y, 1.0, 1.0);
+    *out_pos = *camera_uniform * vec4(input_pos.x, input_pos.y, input_pos.z, 1.0);
     *out_color = vec4(
         instance_color.x,
         instance_color.y,
@@ -46,5 +47,4 @@ pub fn main_fs(
     output: &mut Vec4,
 ) {
     *output = color;
-    // *output = vec4(1.0, 0.0, 0.0, opacity);
 }
