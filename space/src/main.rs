@@ -9,6 +9,7 @@ use crate::{
 };
 
 mod event_loop;
+mod objects;
 mod pipeline;
 mod render;
 mod surface;

@@ -12,7 +12,8 @@ use winit::{
 };
 
 use crate::{
-    render::{Renderer, OBJECT_STRIDE, TRAIL_MAX_LENGTH},
+    objects::{OBJECT_STRIDE, TRAIL_MAX_LENGTH},
+    render::Renderer,
     surface::SurfaceState,
 };
 
@@ -77,7 +78,7 @@ pub fn run_winit_loop(evt_loop: EventLoop<()>, send: Sender<RuntimeEvent>) -> an
 
 pub async fn run_event_loop(
     mut renderer: Renderer,
-    send: Sender<RuntimeEvent>,
+    _send: Sender<RuntimeEvent>,
     mut recv: Receiver<RuntimeEvent>,
     buffer: BufferWrapper,
 ) {
@@ -97,7 +98,7 @@ pub async fn run_event_loop(
                     RuntimeEvent::Redraw => {
                         tick += 1;
                         let r = 1.0 - ((tick as f32) / (TRAIL_MAX_LENGTH as f32));
-                        renderer.push_point_batch(vec![
+                        renderer.push_point_batch(&[
                             [(tick as f32 / 10.0).sin() * r, (tick as f32 / 10.0).cos() * r, 0.0],
                             [(tick as f32 / 10.0).cos() * r, (tick as f32 / 10.0).sin() * r, 0.0]
                         ]);
