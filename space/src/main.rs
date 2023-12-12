@@ -1,4 +1,5 @@
 use bytemuck::{Pod, Zeroable};
+use cgmath::Vector3;
 use event_loop::run_winit_loop;
 use surface::{get_surface, get_window};
 use tokio::runtime::Builder;
@@ -6,7 +7,9 @@ use tokio::runtime::Builder;
 use crate::{
     camera::Camera,
     event_loop::{run_event_loop, BufferWrapper},
+    objects::Objects,
     render::Renderer,
+    sim::{ObjectBuffer, ObjectInfo, AU},
 };
 
 mod camera;
@@ -28,9 +31,44 @@ struct ShaderConstants {
     pub end_index: u32,
 }
 
+pub struct Object {
+    dat: ObjectInfo,
+    color: Vector3<f32>,
+}
+
 fn main() -> anyhow::Result<()> {
     let window = get_window(1280.0, 640.0)?;
-    let num_objects = 2;
+    let objects = vec![
+        Object {
+            dat: ObjectInfo {
+                pos: (0.0, 0.0, 0.0).into(),
+                vel: (0.0, 0.0, 0.0).into(),
+                mass: 333000.0,
+            },
+            color: (1.0, 1.0, 0.0).into(),
+        },
+        Object {
+            dat: ObjectInfo {
+                pos: (1.0, 0.0, 0.0).into(),
+                vel: (0.0, 29.8e3 / AU, 0.0).into(),
+                mass: 1.0,
+            },
+            color: (0.0, 0.0, 1.0).into(),
+        },
+    ];
+
+    let num_objects = objects.len();
+
+    let mut object_infos = Vec::new();
+    let mut buffer_data = Objects::new(num_objects);
+    let descs = buffer_data.descriptions_mut();
+
+    for (idx, obj) in objects.into_iter().enumerate() {
+        object_infos.push(obj.dat);
+        descs[idx].color = obj.color.into();
+    }
+
+    let sim = ObjectBuffer::new(object_infos, 1);
 
     let runtime = Builder::new_multi_thread().enable_all().build().unwrap();
     let (send, recv) = tokio::sync::mpsc::channel(1);
@@ -39,9 +77,16 @@ fn main() -> anyhow::Result<()> {
         let surface = get_surface(&window.window).await.unwrap();
         let buffer = BufferWrapper::new(num_objects, &surface);
         let camera = Camera::new(window.window.inner_size(), &surface.device);
-        let renderer = Renderer::new(surface, &window.window, num_objects, &camera);
+        let renderer = Renderer::new(surface, &window.window, num_objects, &camera, buffer_data);
 
-        tokio::spawn(run_event_loop(renderer, send.clone(), recv, buffer, camera))
+        tokio::spawn(run_event_loop(
+            renderer,
+            send.clone(),
+            recv,
+            buffer,
+            camera,
+            sim,
+        ))
     });
 
     run_winit_loop(window.event_loop, send.clone())?;

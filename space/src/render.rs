@@ -1,14 +1,14 @@
 use bytemuck::cast_slice;
 use wgpu::{
     util::{BufferInitDescriptor, DeviceExt},
-    BindGroup, BlendComponent, BlendFactor, BlendState, Buffer, BufferUsages, CommandEncoder,
-    PrimitiveState, RenderPassDescriptor, RenderPipeline, TextureView,
+    BindGroup, Buffer, BufferUsages, CommandEncoder, RenderPassDescriptor, TextureView,
 };
 use winit::{dpi::PhysicalSize, window::Window};
 
 use crate::{
     camera::Camera,
-    objects::{ObjectInstance, Objects, PointBatch, Vertex, TRAIL_MAX_LENGTH},
+    objects::{Objects, PointBatch, TRAIL_MAX_LENGTH},
+    pipeline::LineDrawPipeline,
     surface::SurfaceState,
     ShaderConstants,
 };
@@ -16,11 +16,10 @@ use crate::{
 pub struct Renderer {
     surface: SurfaceState,
     window_size: PhysicalSize<u32>,
-    pipeline: RenderPipeline,
     objects: Objects,
-    index_buffer: Buffer,
     instance_buffer: Buffer,
     camera_bind_group: BindGroup,
+    line_pipeline: LineDrawPipeline,
 }
 
 impl Renderer {
@@ -29,13 +28,8 @@ impl Renderer {
         window: &Window,
         num_objects: usize,
         camera: &Camera,
+        mut objects: Objects,
     ) -> Self {
-        let shader = wgpu::include_spirv_raw!(env!("shaders.spv"));
-
-        let mut objects = Objects::new(num_objects);
-        objects.descriptions_mut()[0].color = [1.0, 0.0, 0.0];
-        objects.descriptions_mut()[1].color = [1.0, 1.0, 0.0];
-
         let instance_buffer = surface.device.create_buffer_init(&BufferInitDescriptor {
             label: Some("instance buffer"),
             contents: cast_slice(objects.descriptions_mut()),
@@ -47,93 +41,14 @@ impl Renderer {
             .create_bind_group_layout(&Camera::bind_group_layout());
         let camera_bind_group = camera.create_bind_group(&camera_layout, &surface.device);
 
-        let pipeline_layout =
-            surface
-                .device
-                .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                    label: None,
-                    bind_group_layouts: &[&camera_layout],
-                    push_constant_ranges: &[wgpu::PushConstantRange {
-                        stages: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
-                        range: 0..std::mem::size_of::<ShaderConstants>() as u32,
-                    }],
-                });
-
-        let shader_module = unsafe { surface.device.create_shader_module_spirv(&shader) };
-
-        let color_format = surface.surface.as_ref().map_or_else(
-            |_: &wgpu::CreateSurfaceError| wgpu::TextureFormat::Rgba8UnormSrgb,
-            |c| c.config.format,
-        );
-
-        let pipeline = surface
-            .device
-            .create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-                label: Some("pipeline"),
-                layout: Some(&pipeline_layout),
-                vertex: wgpu::VertexState {
-                    module: &shader_module,
-                    entry_point: "main_vs",
-                    buffers: &[Vertex::layout(), ObjectInstance::layout()],
-                },
-                primitive: PrimitiveState {
-                    topology: wgpu::PrimitiveTopology::LineStrip,
-                    strip_index_format: None,
-                    front_face: wgpu::FrontFace::Ccw,
-                    cull_mode: None,
-                    unclipped_depth: false,
-                    polygon_mode: wgpu::PolygonMode::Fill,
-                    conservative: false,
-                },
-                depth_stencil: None,
-                multisample: wgpu::MultisampleState {
-                    count: 1,
-                    mask: !0,
-                    alpha_to_coverage_enabled: false,
-                },
-                fragment: Some(wgpu::FragmentState {
-                    module: &shader_module,
-                    entry_point: "main_fs",
-                    targets: &[Some(wgpu::ColorTargetState {
-                        format: color_format,
-                        blend: Some(BlendState {
-                            color: BlendComponent {
-                                src_factor: BlendFactor::SrcAlpha,
-                                dst_factor: BlendFactor::OneMinusSrcAlpha,
-                                operation: wgpu::BlendOperation::Add,
-                            },
-                            alpha: BlendComponent::OVER,
-                        }),
-                        write_mask: wgpu::ColorWrites::ALL,
-                    })],
-                }),
-                multiview: None,
-            });
-
-        let mut index_list: Vec<u32> = Vec::with_capacity(TRAIL_MAX_LENGTH * 2);
-
-        for _ in 0..2 {
-            for i in 0..TRAIL_MAX_LENGTH {
-                index_list.push((i * num_objects) as u32);
-            }
-        }
-
-        let index_buffer = surface
-            .device
-            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("Index Buffer"),
-                contents: bytemuck::cast_slice(&index_list),
-                usage: wgpu::BufferUsages::INDEX,
-            });
-
+        let line_pipeline = LineDrawPipeline::new(&surface, &camera_layout, num_objects);
         Self {
             surface,
             window_size: window.inner_size(),
-            pipeline,
             objects,
-            index_buffer,
             instance_buffer,
             camera_bind_group,
+            line_pipeline,
         }
     }
 
@@ -163,7 +78,6 @@ impl Renderer {
                 return;
             }
         };
-
         self.objects.flush_to_buffer(&buffer, &self.surface.queue);
         camera.flush_if_needed(&self.surface.queue);
 
@@ -226,22 +140,14 @@ impl Renderer {
             end_index: index_range.end,
         };
 
-        rpass.set_pipeline(&self.pipeline);
-        rpass.set_vertex_buffer(0, buffer.slice(..));
-        rpass.set_vertex_buffer(1, self.instance_buffer.slice(..));
-        rpass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
-
-        rpass.set_bind_group(0, &self.camera_bind_group, &[]);
-
-        rpass.set_push_constants(
-            wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
-            0,
-            bytemuck::bytes_of(&push_constants),
+        self.line_pipeline.draw(
+            &mut rpass,
+            &self.camera_bind_group,
+            buffer,
+            &self.instance_buffer,
+            &push_constants,
+            index_range,
+            self.objects.num_objects(),
         );
-
-        for idx in 0..(self.objects.num_objects()) {
-            let idxu = idx as u32;
-            rpass.draw_indexed(index_range.clone(), idx as i32, idxu..(idxu + 1));
-        }
     }
 }

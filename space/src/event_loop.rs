@@ -1,9 +1,6 @@
 use std::time::{Duration, Instant};
 
-use tokio::{
-    select,
-    sync::mpsc::{Receiver, Sender},
-};
+use tokio::sync::mpsc::{Receiver, Sender};
 use wgpu::{Buffer, BufferDescriptor, BufferUsages};
 use winit::{
     dpi::PhysicalSize,
@@ -12,9 +9,7 @@ use winit::{
 };
 
 use crate::{
-    camera::Camera,
-    objects::{OBJECT_STRIDE, TRAIL_MAX_LENGTH},
-    render::Renderer,
+    camera::Camera, objects::OBJECT_STRIDE, render::Renderer, sim::ObjectBuffer,
     surface::SurfaceState,
 };
 
@@ -117,43 +112,59 @@ pub fn run_winit_loop(evt_loop: EventLoop<()>, send: Sender<RuntimeEvent>) -> an
     Ok(())
 }
 
+const TARGET_PER_TICK: usize = 10_000;
+
 pub async fn run_event_loop(
     mut renderer: Renderer,
     _send: Sender<RuntimeEvent>,
     mut recv: Receiver<RuntimeEvent>,
     buffer: BufferWrapper,
     mut camera: Camera,
+    mut sim: ObjectBuffer,
 ) {
     let mut tick = 0;
+    let mut i = 0;
     loop {
-        select! {
-            evt = recv.recv() => {
-                let Some(evt) = evt else {
+        let evt = loop {
+            i += 1;
+            if i > TARGET_PER_TICK {
+                if let Ok(evt) = recv.try_recv() {
+                    break Some(evt);
+                }
+            }
+
+            sim.exec_iter();
+            if i == TARGET_PER_TICK {
+                break None;
+            }
+        };
+
+        let evt = match evt {
+            Some(x) => x,
+            None => {
+                let Some(evt) = recv.recv().await else {
                     println!("Channel dropped!");
                     break;
                 };
-
-                match evt {
-                    RuntimeEvent::Resize(size) => {
-                        renderer.resize(size);
-                        camera.resize(size);
-                    },
-                    RuntimeEvent::Redraw(e) => {
-                        tick += 1;
-                        let r = 1.0 - ((tick as f32) / (TRAIL_MAX_LENGTH as f32));
-                        renderer.push_point_batch(&[
-                            [(tick as f32 / 10.0).sin() * r, (tick as f32 / 10.0).cos() * r, 0.0],
-                            [(tick as f32 / 10.0).cos() * r, (tick as f32 / 10.0).sin() * r, 0.0]
-                        ]);
-                        camera.move_relative(&e);
-                        camera.zoom(&e);
-                        renderer.redraw(&buffer.buffer, tick, &mut camera);
-                    },
-                    RuntimeEvent::Close => {
-                        println!("Close event loop");
-                        break;
-                    },
-                }
+                evt
+            }
+        };
+        match evt {
+            RuntimeEvent::Resize(size) => {
+                renderer.resize(size);
+                camera.resize(size);
+            }
+            RuntimeEvent::Redraw(e) => {
+                i = 0;
+                tick += 1;
+                sim.sample(&mut renderer);
+                camera.move_relative(&e);
+                camera.zoom(&e);
+                renderer.redraw(&buffer.buffer, tick, &mut camera);
+            }
+            RuntimeEvent::Close => {
+                println!("Close event loop");
+                break;
             }
         }
     }

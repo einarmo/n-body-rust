@@ -42,6 +42,10 @@ pub async fn get_surface(window: &Window) -> anyhow::Result<SurfaceState> {
         ..Default::default()
     });
 
+    for inst in instance.enumerate_adapters(backends) {
+        println!("{:?}", inst.get_info());
+    }
+
     let surface = unsafe { instance.create_surface(&window) };
     let adapter = wgpu::util::initialize_adapter_from_env_or_default(
         &instance, // Request an adapter which can render to our surface
@@ -49,6 +53,8 @@ pub async fn get_surface(window: &Window) -> anyhow::Result<SurfaceState> {
     )
     .await
     .ok_or(anyhow!("Failed to find an appropriate adapter"))?;
+
+    println!("using: {:?}", adapter.get_info());
 
     let (device, queue) = adapter
         .request_device(
@@ -92,7 +98,7 @@ fn auto_configure_surface(
         .get_default_config(adapter, size.width, size.height)
         .unwrap();
 
-    surface_config.present_mode = wgpu::PresentMode::AutoVsync;
+    surface_config.present_mode = wgpu::PresentMode::Fifo;
 
     surface.configure(device, &surface_config);
 

@@ -14,7 +14,7 @@ pub struct ShaderConstants {
 }
 
 #[spirv(vertex)]
-pub fn main_vs(
+pub fn line_vs(
     #[spirv(push_constant)] constants: &ShaderConstants,
     input_pos: Vec3,
     input_idx: u32,
@@ -41,7 +41,7 @@ pub fn main_vs(
 }
 
 #[spirv(fragment)]
-pub fn main_fs(
+pub fn line_fs(
     color: Vec4,
     #[spirv(push_constant)] _constants: &ShaderConstants,
     output: &mut Vec4,

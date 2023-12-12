@@ -15,8 +15,6 @@ pub struct Camera {
     pub up: cgmath::Vector3<f32>,
     pub aspect: f32,
     pub fovy: f32,
-    pub znear: f32,
-    pub zfar: f32,
     matrix: cgmath::Matrix4<f32>,
     changed: bool,
     camera_buffer: Buffer,
@@ -43,8 +41,6 @@ impl Camera {
             up: cgmath::Vector3::unit_y(),
             aspect: size.width as f32 / size.height as f32,
             fovy: 45.0,
-            znear: 1.0,
-            zfar: 100.0,
             changed: true,
             matrix: cgmath::Matrix4::from_diagonal((1.0, 1.0, 1.0, 1.0).into()),
             camera_buffer,
@@ -75,9 +71,20 @@ impl Camera {
 
     fn build_view_projection_matrix(&self) -> cgmath::Matrix4<f32> {
         let view = cgmath::Matrix4::look_at_rh(self.eye, self.target, self.up);
-        let proj = cgmath::perspective(cgmath::Deg(self.fovy), self.aspect, self.znear, self.zfar);
+        // let proj = cgmath::perspective(cgmath::Deg(self.fovy), self.aspect, self.znear, self.zfar);
 
-        return proj * view;
+        let e = 1.0 / ((self.fovy / 2.0).tan());
+        let a = self.aspect;
+        let epsilon = 1e-20;
+        #[rustfmt::skip]
+        let mut inf_proj = cgmath::Matrix4::new(
+            e, 0.0, 0.0, 0.0,
+            0.0, e * a, 0.0, 0.0,
+            0.0, 0.0, epsilon-1.0, (epsilon - 2.0) * 0.0,
+            0.0, 0.0, -1.0, 0.0);
+        inf_proj.transpose_self();
+
+        inf_proj * view
     }
 
     pub fn resize(&mut self, size: PhysicalSize<u32>) {
@@ -147,18 +154,17 @@ impl Camera {
 
         const ZOOM_REL: f32 = 0.1f32;
 
-        let look = self.target - self.eye;
-        if look.magnitude() <= 1.0f32 && keys.plus {
-            return;
-        }
         let look_dir = (self.target - self.eye).normalize();
 
+        let mut rel = Vector3::zero();
         if keys.plus {
-            self.eye += look_dir * ZOOM_REL;
+            rel += look_dir * ZOOM_REL;
         }
         if keys.minus {
-            self.eye -= look_dir * ZOOM_REL;
+            rel -= look_dir * ZOOM_REL;
         }
+        self.target += rel;
+        self.eye += rel;
 
         self.changed = true;
     }
