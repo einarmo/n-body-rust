@@ -9,7 +9,10 @@ use winit::{
 };
 
 use crate::{
-    camera::Camera, objects::OBJECT_STRIDE, render::Renderer, sim::ObjectBuffer,
+    camera::Camera,
+    objects::OBJECT_STRIDE,
+    render::Renderer,
+    sim::{ObjectBuffer, DELTA},
     surface::SurfaceState,
 };
 
@@ -124,6 +127,7 @@ pub async fn run_event_loop(
 ) {
     let mut tick = 0;
     let mut i = 0;
+    let mut total_ticks = 0;
     loop {
         let evt = loop {
             i += 1;
@@ -155,12 +159,17 @@ pub async fn run_event_loop(
                 camera.resize(size);
             }
             RuntimeEvent::Redraw(e) => {
-                i = 0;
                 tick += 1;
                 sim.sample(&mut renderer);
                 camera.move_relative(&e);
                 camera.zoom(&e);
                 renderer.redraw(&buffer.buffer, tick, &mut camera);
+
+                total_ticks += i;
+                let time_passed = total_ticks as f64 * DELTA;
+                println!("{:?} days passed", time_passed / (60.0 * 60.0 * 24.0));
+
+                i = 0;
             }
             RuntimeEvent::Close => {
                 println!("Close event loop");

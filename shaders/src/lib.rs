@@ -19,6 +19,8 @@ pub fn line_vs(
     input_pos: Vec3,
     input_idx: u32,
     instance_color: Vec3,
+    _instance_pos: Vec3,
+    _instance_size: f32,
     #[spirv(uniform, descriptor_set = 0, binding = 0)] camera_uniform: &spirv_std::glam::Mat4,
     #[spirv(position, invariant)] out_pos: &mut Vec4,
     out_color: &mut Vec4,

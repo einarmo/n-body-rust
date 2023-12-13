@@ -7,7 +7,7 @@ use crate::render::Renderer;
 pub const AU: f64 = 1.495e11;
 pub const M0: f64 = 5.972e24;
 pub const G: f64 = 6.674e-11 * M0 / (AU * AU * AU);
-pub const DELTA: f64 = 100.0;
+pub const DELTA: f64 = 10.0;
 
 pub const _TEST: f64 = G * 333000.0;
 pub const _SPEED: f64 = 29.8e3 / AU;

@@ -2,9 +2,12 @@ use std::ops::Range;
 
 use wgpu::{Buffer, Queue, VertexAttribute, VertexBufferLayout};
 
+use crate::Object;
+
 pub type Vec3 = [f32; 3];
 
-pub const TRAIL_MAX_LENGTH: usize = 100;
+// 2 minutes of trail
+pub const TRAIL_MAX_LENGTH: usize = 60 * 60 * 2;
 pub const OBJECT_STRIDE: usize = TRAIL_MAX_LENGTH * std::mem::size_of::<Vertex>();
 
 #[repr(C)]
@@ -57,14 +60,8 @@ pub struct ObjectVertexCache {
 #[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct ObjectInstance {
     pub color: [f32; 3],
-}
-
-impl Default for ObjectInstance {
-    fn default() -> Self {
-        Self {
-            color: [1.0f32, 1.0f32, 1.0f32],
-        }
-    }
+    pub position: [f32; 3],
+    pub radius: f32,
 }
 
 impl ObjectInstance {
@@ -72,11 +69,23 @@ impl ObjectInstance {
         VertexBufferLayout {
             array_stride: std::mem::size_of::<ObjectInstance>() as u64,
             step_mode: wgpu::VertexStepMode::Instance,
-            attributes: &[VertexAttribute {
-                format: wgpu::VertexFormat::Float32x3,
-                offset: 0,
-                shader_location: 2,
-            }],
+            attributes: &[
+                VertexAttribute {
+                    format: wgpu::VertexFormat::Float32x3,
+                    offset: 0,
+                    shader_location: 2,
+                },
+                VertexAttribute {
+                    format: wgpu::VertexFormat::Float32x3,
+                    offset: (std::mem::size_of::<f32>() * 3) as u64,
+                    shader_location: 3,
+                },
+                VertexAttribute {
+                    format: wgpu::VertexFormat::Float32,
+                    offset: (std::mem::size_of::<f32>() * 6) as u64,
+                    shader_location: 4,
+                },
+            ],
         }
     }
 }
@@ -149,10 +158,23 @@ pub struct Objects {
 }
 
 impl Objects {
-    pub fn new(num_objects: usize) -> Self {
+    pub fn new(init: &[Object]) -> Self {
+        let num_objects = init.len();
+        let mut descriptions = Vec::with_capacity(num_objects);
+        for obj in init {
+            descriptions.push(ObjectInstance {
+                color: obj.color.clone().into(),
+                position: {
+                    let x: [f64; 3] = obj.dat.pos.clone().into();
+                    x.map(|f| f as f32)
+                },
+                radius: obj.radius,
+            })
+        }
+
         Self {
             vertices: ObjectVertexCache::new(num_objects),
-            descriptions: vec![Default::default(); num_objects],
+            descriptions,
         }
     }
 

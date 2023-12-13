@@ -34,6 +34,7 @@ struct ShaderConstants {
 pub struct Object {
     dat: ObjectInfo,
     color: Vector3<f32>,
+    radius: f32,
 }
 
 fn main() -> anyhow::Result<()> {
@@ -42,25 +43,27 @@ fn main() -> anyhow::Result<()> {
         Object {
             dat: ObjectInfo {
                 pos: (0.0, 0.0, 0.0).into(),
-                vel: (0.0, 0.0, 0.0).into(),
+                vel: (0.0, 1e3 / AU, 0.0).into(),
                 mass: 333000.0,
             },
             color: (1.0, 1.0, 0.0).into(),
+            radius: (696340e3 / AU) as f32,
         },
         Object {
             dat: ObjectInfo {
                 pos: (1.0, 0.0, 0.0).into(),
-                vel: (0.0, 29.8e3 / AU, 0.0).into(),
+                vel: (0.0, (29.8e3 + 1e3) / AU, 0.0).into(),
                 mass: 1.0,
             },
             color: (0.0, 0.0, 1.0).into(),
+            radius: (6371e3 / AU) as f32,
         },
     ];
 
     let num_objects = objects.len();
 
     let mut object_infos = Vec::new();
-    let mut buffer_data = Objects::new(num_objects);
+    let mut buffer_data = Objects::new(&objects);
     let descs = buffer_data.descriptions_mut();
 
     for (idx, obj) in objects.into_iter().enumerate() {
