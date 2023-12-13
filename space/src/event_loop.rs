@@ -1,6 +1,9 @@
 use std::time::{Duration, Instant};
 
-use tokio::sync::mpsc::{Receiver, Sender};
+use tokio::{
+    sync::mpsc::{Receiver, Sender},
+    task::JoinHandle,
+};
 use wgpu::{Buffer, BufferDescriptor, BufferUsages};
 use winit::{
     dpi::PhysicalSize,
@@ -10,7 +13,7 @@ use winit::{
 
 use crate::{
     camera::Camera,
-    objects::OBJECT_STRIDE,
+    objects::{Objects, OBJECT_STRIDE},
     render::Renderer,
     sim::{ObjectBuffer, DELTA},
     surface::SurfaceState,
@@ -115,29 +118,52 @@ pub fn run_winit_loop(evt_loop: EventLoop<()>, send: Sender<RuntimeEvent>) -> an
     Ok(())
 }
 
-const TARGET_PER_TICK: usize = 10_000;
+const TARGET_PER_TICK: usize = 1_000_000;
+const CHECK_INTERVAL: usize = 500;
 
 pub async fn run_event_loop(
-    mut renderer: Renderer,
+    renderer: Renderer,
     _send: Sender<RuntimeEvent>,
     mut recv: Receiver<RuntimeEvent>,
     buffer: BufferWrapper,
     mut camera: Camera,
     mut sim: ObjectBuffer,
+    mut objects: Objects,
 ) {
+    let mut rolling_average = 0.0;
     let mut tick = 0;
     let mut i = 0;
     let mut total_ticks = 0;
+    let mut state = EventLoopState::WaitingOnTick(renderer);
+    let mut set_size: Option<PhysicalSize<u32>> = None;
+
     loop {
         let evt = loop {
             i += 1;
-            if i > TARGET_PER_TICK {
-                if let Ok(evt) = recv.try_recv() {
-                    break Some(evt);
-                }
-            }
 
             sim.exec_iter();
+            if i % CHECK_INTERVAL == 0 {
+                match state {
+                    EventLoopState::WaitingOnDraw(x) => {
+                        if x.is_finished() {
+                            let renderer = x.await.unwrap();
+                            state = EventLoopState::WaitingOnTick(renderer);
+                        } else {
+                            state = EventLoopState::WaitingOnDraw(x);
+                            if let Ok(evt) = recv.try_recv() {
+                                break Some(evt);
+                            }
+                        }
+                    }
+                    EventLoopState::WaitingOnTick(r) => {
+                        state = EventLoopState::WaitingOnTick(r);
+
+                        if let Ok(evt) = recv.try_recv() {
+                            break Some(evt);
+                        }
+                    }
+                }
+            }
             if i == TARGET_PER_TICK {
                 break None;
             }
@@ -155,19 +181,56 @@ pub async fn run_event_loop(
         };
         match evt {
             RuntimeEvent::Resize(size) => {
-                renderer.resize(size);
+                set_size = Some(size);
                 camera.resize(size);
             }
             RuntimeEvent::Redraw(e) => {
                 tick += 1;
-                sim.sample(&mut renderer);
+
+                sim.sample(&mut objects);
+
                 camera.move_relative(&e);
                 camera.zoom(&e);
-                renderer.redraw(&buffer.buffer, tick, &mut camera);
+
+                match state {
+                    EventLoopState::WaitingOnDraw(x) => {
+                        if x.is_finished() {
+                            let mut renderer = x.await.unwrap();
+
+                            if let Some(size) = set_size {
+                                set_size = None;
+                                renderer.resize(size);
+                            }
+
+                            match renderer.redraw(&buffer.buffer, tick, &mut camera, &mut objects) {
+                                Ok(r) => state = EventLoopState::WaitingOnDraw(r),
+                                // Failed to render for some reason, skip frame
+                                Err(r) => state = EventLoopState::WaitingOnTick(r),
+                            }
+                        } else {
+                            // Still waiting on draw, skip frame
+                            state = EventLoopState::WaitingOnDraw(x)
+                        }
+                    }
+                    EventLoopState::WaitingOnTick(mut renderer) => {
+                        if let Some(size) = set_size {
+                            set_size = None;
+                            renderer.resize(size);
+                        }
+                        match renderer.redraw(&buffer.buffer, tick, &mut camera, &mut objects) {
+                            Ok(r) => state = EventLoopState::WaitingOnDraw(r),
+                            Err(r) => state = EventLoopState::WaitingOnTick(r),
+                        }
+                    }
+                }
+
+                rolling_average /= 2.0;
+                rolling_average += i as f32;
+                println!("{} ticks in iteration", rolling_average / 2.0);
 
                 total_ticks += i;
                 let time_passed = total_ticks as f64 * DELTA;
-                println!("{:?} days passed", time_passed / (60.0 * 60.0 * 24.0));
+                // println!("{:?} days passed", time_passed / (60.0 * 60.0 * 24.0));
 
                 i = 0;
             }
@@ -178,8 +241,22 @@ pub async fn run_event_loop(
         }
     }
     drop(buffer);
-    drop(renderer);
+    drop(state);
     println!("Event loop terminated");
+}
+
+enum EventLoopState {
+    WaitingOnDraw(JoinHandle<Renderer>),
+    WaitingOnTick(Renderer),
+}
+
+impl EventLoopState {
+    pub fn renderer(&mut self) -> Option<&mut Renderer> {
+        match self {
+            EventLoopState::WaitingOnDraw(x) => None,
+            EventLoopState::WaitingOnTick(x) => Some(x),
+        }
+    }
 }
 
 pub struct BufferWrapper {

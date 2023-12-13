@@ -1,4 +1,5 @@
 use bytemuck::cast_slice;
+use tokio::task::{spawn_blocking, JoinHandle};
 use wgpu::{
     util::{BufferInitDescriptor, DeviceExt},
     BindGroup, Buffer, BufferUsages, CommandEncoder, RenderPassDescriptor, TextureView,
@@ -7,7 +8,7 @@ use winit::{dpi::PhysicalSize, window::Window};
 
 use crate::{
     camera::Camera,
-    objects::{Objects, PointBatch, TRAIL_MAX_LENGTH},
+    objects::{Objects, TRAIL_MAX_LENGTH},
     pipeline::LineDrawPipeline,
     surface::SurfaceState,
     ShaderConstants,
@@ -16,7 +17,6 @@ use crate::{
 pub struct Renderer {
     surface: SurfaceState,
     window_size: PhysicalSize<u32>,
-    objects: Objects,
     instance_buffer: Buffer,
     camera_bind_group: BindGroup,
     line_pipeline: LineDrawPipeline,
@@ -28,7 +28,7 @@ impl Renderer {
         window: &Window,
         num_objects: usize,
         camera: &Camera,
-        mut objects: Objects,
+        objects: &mut Objects,
     ) -> Self {
         let instance_buffer = surface.device.create_buffer_init(&BufferInitDescriptor {
             label: Some("instance buffer"),
@@ -45,20 +45,21 @@ impl Renderer {
         Self {
             surface,
             window_size: window.inner_size(),
-            objects,
             instance_buffer,
             camera_bind_group,
             line_pipeline,
         }
     }
 
-    pub fn push_point_batch(&mut self, batch: PointBatch) {
-        self.objects.push_items(batch);
-    }
-
-    pub fn redraw(&mut self, buffer: &Buffer, tick: u32, camera: &mut Camera) {
+    pub fn redraw(
+        mut self,
+        buffer: &Buffer,
+        tick: u32,
+        camera: &mut Camera,
+        objects: &mut Objects,
+    ) -> Result<JoinHandle<Self>, Self> {
         let Ok(surface_with_config) = &mut self.surface.surface else {
-            return;
+            return Err(self);
         };
 
         let output = match surface_with_config.surface.get_current_texture() {
@@ -71,14 +72,14 @@ impl Renderer {
                     }
                     wgpu::SurfaceError::OutOfMemory => {
                         println!("Out of memory!");
-                        return;
+                        return Err(self);
                     }
                     _ => (),
                 }
-                return;
+                return Err(self);
             }
         };
-        self.objects.flush_to_buffer(&buffer, &self.surface.queue);
+        objects.flush_to_buffer(&buffer, &self.surface.queue);
         camera.flush_if_needed(&self.surface.queue);
 
         let mut output_view = output
@@ -89,11 +90,14 @@ impl Renderer {
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
 
-        self.pass(&mut encoder, &mut output_view, buffer, tick);
+        self.pass(&mut encoder, &mut output_view, buffer, tick, &objects);
 
         self.surface.queue.submit(Some(encoder.finish()));
 
-        output.present();
+        Ok(spawn_blocking(move || {
+            output.present();
+            self
+        }))
     }
 
     pub fn resize(&mut self, size: PhysicalSize<u32>) {
@@ -114,6 +118,7 @@ impl Renderer {
         output_view: &mut TextureView,
         buffer: &Buffer,
         tick: u32,
+        objects: &Objects,
     ) {
         let mut rpass = encoder.begin_render_pass(&RenderPassDescriptor {
             label: None,
@@ -129,7 +134,7 @@ impl Renderer {
             ..Default::default()
         });
 
-        let index_range = self.objects.get_index_range();
+        let index_range = objects.get_index_range();
 
         let push_constants = ShaderConstants {
             width: self.window_size.width,
@@ -147,7 +152,7 @@ impl Renderer {
             &self.instance_buffer,
             &push_constants,
             index_range,
-            self.objects.num_objects(),
+            objects.num_objects(),
         );
     }
 }

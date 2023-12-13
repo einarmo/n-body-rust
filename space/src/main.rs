@@ -80,7 +80,13 @@ fn main() -> anyhow::Result<()> {
         let surface = get_surface(&window.window).await.unwrap();
         let buffer = BufferWrapper::new(num_objects, &surface);
         let camera = Camera::new(window.window.inner_size(), &surface.device);
-        let renderer = Renderer::new(surface, &window.window, num_objects, &camera, buffer_data);
+        let renderer = Renderer::new(
+            surface,
+            &window.window,
+            num_objects,
+            &camera,
+            &mut buffer_data,
+        );
 
         tokio::spawn(run_event_loop(
             renderer,
@@ -89,6 +95,7 @@ fn main() -> anyhow::Result<()> {
             buffer,
             camera,
             sim,
+            buffer_data,
         ))
     });
 

@@ -1,7 +1,7 @@
 use cgmath::{InnerSpace, Point3, Vector3, Zero};
 use rayon::{ThreadPool, ThreadPoolBuilder};
 
-use crate::render::Renderer;
+use crate::objects::Objects;
 
 // Adjusted gravitational constant in earth masses and AU
 pub const AU: f64 = 1.495e11;
@@ -99,13 +99,13 @@ impl ObjectBuffer {
         }
     }
 
-    pub fn sample(&mut self, renderer: &mut Renderer) {
+    pub fn sample(&mut self, objects: &mut Objects) {
         for (buff, obj) in self.push_buffer.iter_mut().zip(self.objects.iter()) {
             buff[0] = obj.pos.x as f32;
             buff[1] = obj.pos.y as f32;
             buff[2] = obj.pos.z as f32;
         }
-        renderer.push_point_batch(&self.push_buffer);
+        objects.push_items(&self.push_buffer);
     }
 }
 
