@@ -1,8 +1,6 @@
 use cgmath::{InnerSpace, Point3, Vector3, Zero};
 use rayon::{ThreadPool, ThreadPoolBuilder};
 
-use crate::objects::Objects;
-
 // Adjusted gravitational constant in earth masses and AU
 pub const AU: f64 = 1.495e11;
 pub const M0: f64 = 5.972e24;
@@ -40,14 +38,19 @@ impl ObjectInfo {
 }
 
 pub struct ObjectBuffer {
-    objects: Vec<ObjectInfo>,
+    pub objects: Vec<ObjectInfo>,
     out_buffer: Vec<Vector3<f64>>,
     n_threads: usize,
     pool: ThreadPool,
-    push_buffer: Vec<[f32; 3]>,
 }
 
 const MAX_THREADS: usize = 4;
+const OBJECTS_PER_THREAD: usize = 10;
+
+pub fn compute_target_threads(n_objects: usize) -> usize {
+    assert!(n_objects > 0);
+    (((n_objects as f32) / (OBJECTS_PER_THREAD as f32)).ceil() as usize).min(MAX_THREADS)
+}
 
 fn iter_chunk(objects: &[ObjectInfo], out_buffer: &mut [Vector3<f64>], start: usize) {
     let range = start..(start + out_buffer.len());
@@ -67,9 +70,10 @@ fn iter_chunk(objects: &[ObjectInfo], out_buffer: &mut [Vector3<f64>], start: us
 }
 
 impl ObjectBuffer {
-    pub fn new(objects: Vec<ObjectInfo>, n_threads: usize) -> Self {
+    pub fn new(objects: Vec<ObjectInfo>) -> Self {
         let len = objects.len();
         let out_buffer = vec![Vector3::<f64>::zero(); len];
+        let n_threads = compute_target_threads(objects.len());
 
         Self {
             objects,
@@ -79,7 +83,6 @@ impl ObjectBuffer {
                 .num_threads(n_threads)
                 .build()
                 .unwrap(),
-            push_buffer: vec![[0.0, 0.0, 0.0]; len],
         }
     }
 
@@ -97,15 +100,6 @@ impl ObjectBuffer {
             acc.y = 0.0;
             acc.z = 0.0;
         }
-    }
-
-    pub fn sample(&mut self, objects: &mut Objects) {
-        for (buff, obj) in self.push_buffer.iter_mut().zip(self.objects.iter()) {
-            buff[0] = obj.pos.x as f32;
-            buff[1] = obj.pos.y as f32;
-            buff[2] = obj.pos.z as f32;
-        }
-        objects.push_items(&self.push_buffer);
     }
 }
 

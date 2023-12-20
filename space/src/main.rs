@@ -1,17 +1,22 @@
+use std::sync::Arc;
+
 use bytemuck::{Pod, Zeroable};
 use cgmath::Vector3;
 use event_loop::run_winit_loop;
 use surface::{get_surface, get_window};
 use tokio::runtime::Builder;
+use tokio_util::sync::CancellationToken;
 
 use crate::{
+    batch_request::BatchRequest,
     camera::Camera,
-    event_loop::{run_event_loop, BufferWrapper},
+    event_loop::{run_sim_loop, BufferWrapper},
     objects::Objects,
     render::Renderer,
     sim::{ObjectBuffer, ObjectInfo, AU},
 };
 
+mod batch_request;
 mod camera;
 mod event_loop;
 mod objects;
@@ -71,37 +76,39 @@ fn main() -> anyhow::Result<()> {
         descs[idx].color = obj.color.into();
     }
 
-    let sim = ObjectBuffer::new(object_infos, 1);
+    let sim = ObjectBuffer::new(object_infos);
 
     let runtime = Builder::new_multi_thread().enable_all().build().unwrap();
-    let (send, recv) = tokio::sync::mpsc::channel(1);
 
-    let task = runtime.block_on(async {
-        let surface = get_surface(&window.window).await.unwrap();
-        let buffer = BufferWrapper::new(num_objects, &surface);
-        let camera = Camera::new(window.window.inner_size(), &surface.device);
-        let renderer = Renderer::new(
-            surface,
-            &window.window,
-            num_objects,
-            &camera,
-            &mut buffer_data,
-        );
+    let batch = Arc::new(BatchRequest::new(num_objects));
+    let batch_clone = batch.clone();
+    let token = CancellationToken::new();
+    let token_clone = token.clone();
 
-        tokio::spawn(run_event_loop(
-            renderer,
-            send.clone(),
-            recv,
-            buffer,
-            camera,
-            sim,
-            buffer_data,
-        ))
-    });
+    let surface = runtime.block_on(async { get_surface(&window.window).await.unwrap() });
+    let buffer = BufferWrapper::new(num_objects, &surface);
+    let camera = Camera::new(window.window.inner_size(), &surface.device);
+    let renderer = Renderer::new(
+        surface,
+        &window.window,
+        num_objects,
+        &camera,
+        &mut buffer_data,
+    );
 
-    run_winit_loop(window.event_loop, send.clone())?;
+    let task =
+        runtime.block_on(async { tokio::spawn(run_sim_loop(sim, batch_clone, token_clone)) });
 
-    send.blocking_send(event_loop::RuntimeEvent::Close)?;
+    run_winit_loop(
+        window.event_loop,
+        renderer,
+        camera,
+        batch,
+        buffer,
+        buffer_data,
+    )?;
+
+    token.cancel();
     println!("Wait for task completion");
     runtime.block_on(task)?;
     println!("Task completed");

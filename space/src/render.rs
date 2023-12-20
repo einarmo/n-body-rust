@@ -1,5 +1,4 @@
 use bytemuck::cast_slice;
-use tokio::task::{spawn_blocking, JoinHandle};
 use wgpu::{
     util::{BufferInitDescriptor, DeviceExt},
     BindGroup, Buffer, BufferUsages, CommandEncoder, RenderPassDescriptor, TextureView,
@@ -52,14 +51,14 @@ impl Renderer {
     }
 
     pub fn redraw(
-        mut self,
+        &mut self,
         buffer: &Buffer,
         tick: u32,
         camera: &mut Camera,
         objects: &mut Objects,
-    ) -> Result<JoinHandle<Self>, Self> {
+    ) {
         let Ok(surface_with_config) = &mut self.surface.surface else {
-            return Err(self);
+            return;
         };
 
         let output = match surface_with_config.surface.get_current_texture() {
@@ -72,11 +71,11 @@ impl Renderer {
                     }
                     wgpu::SurfaceError::OutOfMemory => {
                         println!("Out of memory!");
-                        return Err(self);
+                        return;
                     }
                     _ => (),
                 }
-                return Err(self);
+                return;
             }
         };
         objects.flush_to_buffer(&buffer, &self.surface.queue);
@@ -93,11 +92,7 @@ impl Renderer {
         self.pass(&mut encoder, &mut output_view, buffer, tick, &objects);
 
         self.surface.queue.submit(Some(encoder.finish()));
-
-        Ok(spawn_blocking(move || {
-            output.present();
-            self
-        }))
+        output.present();
     }
 
     pub fn resize(&mut self, size: PhysicalSize<u32>) {
