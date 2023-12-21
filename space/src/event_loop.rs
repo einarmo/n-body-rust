@@ -107,7 +107,7 @@ pub fn run_winit_loop(
 
                 renderer.redraw(tick, &mut camera, &mut objects);
 
-                let last_draw = next_tick_ref.clone();
+                let _last_draw = *next_tick_ref;
                 *next_tick_ref = Instant::now();
                 // println!("Ticks since last: {:?}", *next_tick_ref - last_draw);
             }

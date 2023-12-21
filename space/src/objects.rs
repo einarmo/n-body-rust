@@ -114,7 +114,7 @@ impl ObjectVertexCache {
     pub fn push_items(&mut self, batch: PointBatch) {
         assert!(batch.len() == self.num_objects);
 
-        for point in batch.into_iter() {
+        for point in batch.iter() {
             self.buff[self.pending_tail] = Vertex {
                 pos: *point,
                 idx: self.tail as u32,
@@ -132,21 +132,28 @@ impl ObjectVertexCache {
 
     pub fn flush_to_buffer(&mut self, buffer: &Buffer, queue: &Queue) {
         let offset = (self.pending_head * std::mem::size_of::<Vertex>()) as u64;
-        if self.pending_tail > self.pending_head {
-            let slice = &self.buff[self.pending_head..self.pending_tail];
-            let byte_slice = bytemuck::cast_slice(slice);
-            queue.write_buffer(buffer, offset, byte_slice);
-        } else if self.pending_tail < self.pending_head {
-            queue.write_buffer(
-                buffer,
-                offset,
-                bytemuck::cast_slice(&self.buff[self.pending_head..]),
-            );
-            queue.write_buffer(
-                buffer,
-                0,
-                bytemuck::cast_slice(&self.buff[0..self.pending_tail]),
-            );
+        match self.pending_tail.cmp(&self.pending_head) {
+            // Buffer is wrapping around
+            std::cmp::Ordering::Less => {
+                queue.write_buffer(
+                    buffer,
+                    offset,
+                    bytemuck::cast_slice(&self.buff[self.pending_head..]),
+                );
+                queue.write_buffer(
+                    buffer,
+                    0,
+                    bytemuck::cast_slice(&self.buff[0..self.pending_tail]),
+                );
+            }
+            // Buffer is empty
+            std::cmp::Ordering::Equal => (),
+            // Buffer is not wrapping
+            std::cmp::Ordering::Greater => {
+                let slice = &self.buff[self.pending_head..self.pending_tail];
+                let byte_slice = bytemuck::cast_slice(slice);
+                queue.write_buffer(buffer, offset, byte_slice);
+            }
         }
         self.pending_head = self.pending_tail;
     }
@@ -163,9 +170,9 @@ impl Objects {
         let mut descriptions = Vec::with_capacity(num_objects);
         for obj in init {
             descriptions.push(ObjectInstance {
-                color: obj.color.clone().into(),
+                color: obj.color.into(),
                 position: {
-                    let x: [f64; 3] = obj.dat.pos.clone().into();
+                    let x: [f64; 3] = obj.dat.pos.into();
                     x.map(|f| f as f32)
                 },
                 radius: obj.radius,

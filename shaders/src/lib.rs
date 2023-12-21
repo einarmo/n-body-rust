@@ -1,5 +1,5 @@
+#![allow(clippy::too_many_arguments)]
 #![cfg_attr(target_arch = "spirv", no_std)]
-
 use spirv_std::glam::{vec4, Vec3, Vec4};
 use spirv_std::spirv;
 

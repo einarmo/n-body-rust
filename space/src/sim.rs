@@ -47,12 +47,10 @@ pub fn compute_target_threads(n_objects: usize) -> usize {
 
 fn iter_chunk(objects: &[ObjectInfo], out_buffer: &mut [Vector3<f64>], start: usize) {
     let range = start..(start + out_buffer.len());
-    assert!(range.end <= objects.len());
-    let mut idx = 0;
-    for i in range {
+    debug_assert!(range.end <= objects.len());
+    for (idx, i) in range.enumerate() {
         let obj = &objects[i];
         let out = &mut out_buffer[idx];
-        idx += 1;
         for (other_idx, other) in objects.iter().enumerate() {
             if other_idx == i {
                 continue;

@@ -94,7 +94,7 @@ impl Renderer {
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
 
-        self.pass(&mut encoder, &mut output_view, tick, &objects);
+        self.pass(&mut encoder, &mut output_view, tick, objects);
 
         self.surface.queue.submit(Some(encoder.finish()));
         output.present();
@@ -122,7 +122,7 @@ impl Renderer {
         let mut rpass = encoder.begin_render_pass(&RenderPassDescriptor {
             label: None,
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                view: &output_view,
+                view: output_view,
                 resolve_target: None,
                 ops: wgpu::Operations {
                     load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),

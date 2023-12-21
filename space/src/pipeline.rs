@@ -122,7 +122,7 @@ impl LineDrawPipeline {
         rpass.set_vertex_buffer(1, instance_buffer.slice(..));
         rpass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
 
-        rpass.set_bind_group(0, &camera, &[]);
+        rpass.set_bind_group(0, camera, &[]);
 
         rpass.set_push_constants(
             wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
