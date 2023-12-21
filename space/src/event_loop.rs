@@ -1,6 +1,11 @@
-use std::{sync::Arc, time::Instant};
+use std::{
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
+    time::Instant,
+};
 
-use tokio_util::sync::CancellationToken;
 use winit::{
     event::{ElementState, Event, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
@@ -124,11 +129,7 @@ pub fn run_winit_loop(
 
 const CHECK_INTERVAL: usize = 500;
 
-pub async fn run_sim_loop(
-    mut sim: ObjectBuffer,
-    exchange: Arc<BatchRequest>,
-    token: CancellationToken,
-) {
+pub fn run_sim_loop(mut sim: ObjectBuffer, exchange: Arc<BatchRequest>, token: Arc<AtomicBool>) {
     let mut i = 0;
 
     loop {
@@ -140,7 +141,7 @@ pub async fn run_sim_loop(
                 exchange.store(&sim);
                 // println!("Iterations since last sample: {}", i);
                 i = 0;
-            } else if token.is_cancelled() {
+            } else if token.load(Ordering::Relaxed) {
                 break;
             }
         }

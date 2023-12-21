@@ -1,26 +1,21 @@
 use cgmath::{InnerSpace, Point3, Vector3, Zero};
 use rayon::{ThreadPool, ThreadPoolBuilder};
 
-// Adjusted gravitational constant in earth masses and AU
+// Average distance between earth and the sun, in meters
 pub const AU: f64 = 1.495e11;
+// Mass of earth, in kilograms
 pub const M0: f64 = 5.972e24;
+// Adjusted gravitational constant in earth masses and AU
 pub const G: f64 = 6.674e-11 * M0 / (AU * AU * AU);
+// Seconds per computation (really!)
 pub const DELTA: f64 = 10.0;
+// Padding between all objects to avoid division by zero, 10 meters.
+pub const COLLISION_EPSILON: f64 = (10.0 / AU) * (10.0 / AU);
 
 pub const _TEST: f64 = G * 333000.0;
 pub const _SPEED: f64 = 29.8e3 / AU;
 pub const _REF: f64 = 6.674e-11 * M0 * 333000.0 / (AU * AU);
 pub const _REF2: f64 = _REF / AU;
-
-// F = G m1 m2 / r^2
-// Using earth masses:
-// F = G m1/M0 m2/M0 / r^2
-// F = G/M0^2 m1m2/r^2
-// In AU:
-// F = G/M0^2 m1m2/((r/AU)^2)
-// F = G AU^2/M0^2 m1m2/r^2
-// Since we only care about acceleration, not force:
-// a = G AU^2/M0 m2/r^2
 
 pub struct ObjectInfo {
     pub pos: Point3<f64>,
@@ -31,9 +26,7 @@ pub struct ObjectInfo {
 impl ObjectInfo {
     pub fn get_acc_towards(&self, other: &ObjectInfo, out: &mut Vector3<f64>) {
         let rel = other.pos - self.pos;
-        let len_squared = (other.pos - self.pos).dot(other.pos - self.pos);
-        let norm = rel.normalize();
-        *out += norm * other.mass * G / len_squared;
+        *out += rel * other.mass * G / (rel.magnitude() + COLLISION_EPSILON);
     }
 }
 

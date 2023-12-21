@@ -1,11 +1,10 @@
-use std::sync::Arc;
+use std::sync::{atomic::AtomicBool, Arc};
 
 use bytemuck::{Pod, Zeroable};
 use cgmath::Vector3;
 use event_loop::run_winit_loop;
+use pollster::FutureExt;
 use surface::{get_surface, get_window};
-use tokio::runtime::Builder;
-use tokio_util::sync::CancellationToken;
 
 use crate::{
     batch_request::BatchRequest,
@@ -78,14 +77,12 @@ fn main() -> anyhow::Result<()> {
 
     let sim = ObjectBuffer::new(object_infos);
 
-    let runtime = Builder::new_multi_thread().enable_all().build().unwrap();
-
     let batch = Arc::new(BatchRequest::new(num_objects));
     let batch_clone = batch.clone();
-    let token = CancellationToken::new();
+    let token = Arc::new(AtomicBool::new(false));
     let token_clone = token.clone();
 
-    let surface = runtime.block_on(async { get_surface(&window.window).await.unwrap() });
+    let surface = get_surface(&window.window).block_on()?;
     let camera = Camera::new(window.window.inner_size(), &surface.device);
     let renderer = Renderer::new(
         surface,
@@ -95,14 +92,13 @@ fn main() -> anyhow::Result<()> {
         &mut buffer_data,
     );
 
-    let task =
-        runtime.block_on(async { tokio::spawn(run_sim_loop(sim, batch_clone, token_clone)) });
+    let handle = std::thread::spawn(|| run_sim_loop(sim, batch_clone, token_clone));
 
     run_winit_loop(window.event_loop, renderer, camera, batch, buffer_data)?;
 
-    token.cancel();
+    token.store(true, std::sync::atomic::Ordering::Relaxed);
     println!("Wait for task completion");
-    runtime.block_on(task)?;
+    handle.join().unwrap();
     println!("Task completed");
 
     println!("Drop window");
