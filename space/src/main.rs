@@ -10,7 +10,7 @@ use tokio_util::sync::CancellationToken;
 use crate::{
     batch_request::BatchRequest,
     camera::Camera,
-    event_loop::{run_sim_loop, BufferWrapper},
+    event_loop::run_sim_loop,
     objects::Objects,
     render::Renderer,
     sim::{ObjectBuffer, ObjectInfo, AU},
@@ -86,7 +86,6 @@ fn main() -> anyhow::Result<()> {
     let token_clone = token.clone();
 
     let surface = runtime.block_on(async { get_surface(&window.window).await.unwrap() });
-    let buffer = BufferWrapper::new(num_objects, &surface);
     let camera = Camera::new(window.window.inner_size(), &surface.device);
     let renderer = Renderer::new(
         surface,
@@ -99,14 +98,7 @@ fn main() -> anyhow::Result<()> {
     let task =
         runtime.block_on(async { tokio::spawn(run_sim_loop(sim, batch_clone, token_clone)) });
 
-    run_winit_loop(
-        window.event_loop,
-        renderer,
-        camera,
-        batch,
-        buffer,
-        buffer_data,
-    )?;
+    run_winit_loop(window.event_loop, renderer, camera, batch, buffer_data)?;
 
     token.cancel();
     println!("Wait for task completion");

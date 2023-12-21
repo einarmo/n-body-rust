@@ -1,19 +1,14 @@
 use std::{sync::Arc, time::Instant};
 
 use tokio_util::sync::CancellationToken;
-use wgpu::{Buffer, BufferDescriptor, BufferUsages};
 use winit::{
     event::{ElementState, Event, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
 };
 
 use crate::{
-    batch_request::BatchRequest,
-    camera::Camera,
-    objects::{Objects, OBJECT_STRIDE},
-    render::Renderer,
+    batch_request::BatchRequest, camera::Camera, objects::Objects, render::Renderer,
     sim::ObjectBuffer,
-    surface::SurfaceState,
 };
 
 #[derive(Default, Clone, Copy)]
@@ -41,7 +36,6 @@ pub fn run_winit_loop(
     mut renderer: Renderer,
     mut camera: Camera,
     exchange: Arc<BatchRequest>,
-    buffer: BufferWrapper,
     mut objects: Objects,
 ) -> anyhow::Result<()> {
     let mut next_tick = Instant::now();
@@ -106,11 +100,11 @@ pub fn run_winit_loop(
                 camera.move_relative(&keyboard_state);
                 camera.zoom(&keyboard_state);
 
-                renderer.redraw(&buffer.buffer, tick, &mut camera, &mut objects);
+                renderer.redraw(tick, &mut camera, &mut objects);
 
                 let last_draw = next_tick_ref.clone();
                 *next_tick_ref = Instant::now();
-                println!("Ticks since last: {:?}", *next_tick_ref - last_draw);
+                // println!("Ticks since last: {:?}", *next_tick_ref - last_draw);
             }
             Event::WindowEvent {
                 event: WindowEvent::RedrawRequested,
@@ -144,7 +138,7 @@ pub async fn run_sim_loop(
         if i % CHECK_INTERVAL == 0 {
             if exchange.should_store() {
                 exchange.store(&sim);
-                println!("Iterations since last sample: {}", i);
+                // println!("Iterations since last sample: {}", i);
                 i = 0;
             } else if token.is_cancelled() {
                 break;
@@ -152,21 +146,4 @@ pub async fn run_sim_loop(
         }
     }
     println!("Event loop terminated");
-}
-
-pub struct BufferWrapper {
-    buffer: Buffer,
-}
-
-impl BufferWrapper {
-    pub fn new(num_objects: usize, surface: &SurfaceState) -> Self {
-        let buffer = surface.device.create_buffer(&BufferDescriptor {
-            label: Some("pos_buffer"),
-            size: (num_objects * OBJECT_STRIDE) as u64,
-            usage: BufferUsages::VERTEX | BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
-
-        Self { buffer }
-    }
 }

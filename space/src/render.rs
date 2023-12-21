@@ -1,13 +1,14 @@
 use bytemuck::cast_slice;
 use wgpu::{
     util::{BufferInitDescriptor, DeviceExt},
-    BindGroup, Buffer, BufferUsages, CommandEncoder, RenderPassDescriptor, TextureView,
+    BindGroup, Buffer, BufferDescriptor, BufferUsages, CommandEncoder, RenderPassDescriptor,
+    TextureView,
 };
 use winit::{dpi::PhysicalSize, window::Window};
 
 use crate::{
     camera::Camera,
-    objects::{Objects, TRAIL_MAX_LENGTH},
+    objects::{Objects, OBJECT_STRIDE, TRAIL_MAX_LENGTH},
     pipeline::LineDrawPipeline,
     surface::SurfaceState,
     ShaderConstants,
@@ -16,6 +17,7 @@ use crate::{
 pub struct Renderer {
     surface: SurfaceState,
     window_size: PhysicalSize<u32>,
+    point_buffer: Buffer,
     instance_buffer: Buffer,
     camera_bind_group: BindGroup,
     line_pipeline: LineDrawPipeline,
@@ -41,22 +43,25 @@ impl Renderer {
         let camera_bind_group = camera.create_bind_group(&camera_layout, &surface.device);
 
         let line_pipeline = LineDrawPipeline::new(&surface, &camera_layout, num_objects);
+
+        let point_buffer = surface.device.create_buffer(&BufferDescriptor {
+            label: Some("pos_buffer"),
+            size: (num_objects * OBJECT_STRIDE) as u64,
+            usage: BufferUsages::VERTEX | BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+
         Self {
             surface,
             window_size: window.inner_size(),
             instance_buffer,
             camera_bind_group,
+            point_buffer,
             line_pipeline,
         }
     }
 
-    pub fn redraw(
-        &mut self,
-        buffer: &Buffer,
-        tick: u32,
-        camera: &mut Camera,
-        objects: &mut Objects,
-    ) {
+    pub fn redraw(&mut self, tick: u32, camera: &mut Camera, objects: &mut Objects) {
         let Ok(surface_with_config) = &mut self.surface.surface else {
             return;
         };
@@ -78,7 +83,7 @@ impl Renderer {
                 return;
             }
         };
-        objects.flush_to_buffer(&buffer, &self.surface.queue);
+        objects.flush_to_buffer(&self.point_buffer, &self.surface.queue);
         camera.flush_if_needed(&self.surface.queue);
 
         let mut output_view = output
@@ -89,7 +94,7 @@ impl Renderer {
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
 
-        self.pass(&mut encoder, &mut output_view, buffer, tick, &objects);
+        self.pass(&mut encoder, &mut output_view, tick, &objects);
 
         self.surface.queue.submit(Some(encoder.finish()));
         output.present();
@@ -111,7 +116,6 @@ impl Renderer {
         &self,
         encoder: &mut CommandEncoder,
         output_view: &mut TextureView,
-        buffer: &Buffer,
         tick: u32,
         objects: &Objects,
     ) {
@@ -143,7 +147,7 @@ impl Renderer {
         self.line_pipeline.draw(
             &mut rpass,
             &self.camera_bind_group,
-            buffer,
+            &self.point_buffer,
             &self.instance_buffer,
             &push_constants,
             index_range,
