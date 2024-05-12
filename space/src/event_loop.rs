@@ -9,6 +9,7 @@ use std::{
 use winit::{
     event::{ElementState, Event, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
+    keyboard::NamedKey,
 };
 
 use crate::{
@@ -16,14 +17,53 @@ use crate::{
     sim::ObjectBuffer,
 };
 
-#[derive(Default, Clone, Copy)]
+#[derive(Debug, Default, Clone)]
+pub struct KeyTrigger {
+    pressed: bool,
+    trigger: bool,
+}
+
+impl KeyTrigger {
+    pub fn new() -> Self {
+        Self::default()
+    }
+    pub fn event(&mut self, is_pressed: bool) {
+        match (self.pressed, is_pressed) {
+            (true, true) => (),
+            (true, false) => self.pressed = false,
+            (false, true) => {
+                self.pressed = true;
+                self.trigger = true;
+            }
+            (false, false) => (),
+        }
+    }
+
+    pub fn get_trigger(&mut self) -> bool {
+        let t = self.trigger;
+        self.trigger = false;
+        t
+    }
+}
+
+#[derive(Default, Clone)]
 pub struct KeyboardState {
     pub w: bool,
     pub a: bool,
     pub s: bool,
     pub d: bool,
+    pub up: bool,
+    pub left: bool,
+    pub down: bool,
+    pub right: bool,
+    pub home: bool,
+    pub pgup: bool,
     pub plus: bool,
     pub minus: bool,
+    pub f: KeyTrigger,
+    pub g: KeyTrigger,
+    pub h: KeyTrigger,
+    pub space: KeyTrigger,
 }
 
 impl KeyboardState {
@@ -33,6 +73,10 @@ impl KeyboardState {
 
     pub fn any_zoom(&self) -> bool {
         self.plus || self.minus
+    }
+
+    pub fn any_rot(&self) -> bool {
+        self.up || self.down || self.right || self.left || self.home || self.pgup
     }
 }
 
@@ -69,18 +113,32 @@ pub fn run_winit_loop(
                 event: WindowEvent::KeyboardInput { event, .. },
                 ..
             } => {
-                let winit::keyboard::Key::Character(code) = &event.logical_key else {
-                    return;
-                };
                 let is_pressed = event.state == ElementState::Pressed;
-                match code.as_str() {
-                    "w" => keyboard_state.w = is_pressed,
-                    "a" => keyboard_state.a = is_pressed,
-                    "s" => keyboard_state.s = is_pressed,
-                    "d" => keyboard_state.d = is_pressed,
-                    "-" => keyboard_state.minus = is_pressed,
-                    "+" => keyboard_state.plus = is_pressed,
-                    _ => (),
+                match event.logical_key {
+                    winit::keyboard::Key::Named(key) => match key {
+                        NamedKey::ArrowUp => keyboard_state.up = is_pressed,
+                        NamedKey::ArrowLeft => keyboard_state.left = is_pressed,
+                        NamedKey::ArrowDown => keyboard_state.down = is_pressed,
+                        NamedKey::ArrowRight => keyboard_state.right = is_pressed,
+                        NamedKey::Home => keyboard_state.home = is_pressed,
+                        NamedKey::PageUp => keyboard_state.pgup = is_pressed,
+                        NamedKey::Space => keyboard_state.space.event(is_pressed),
+                        _ => (),
+                    },
+                    winit::keyboard::Key::Character(code) => match code.as_str() {
+                        "w" => keyboard_state.w = is_pressed,
+                        "a" => keyboard_state.a = is_pressed,
+                        "s" => keyboard_state.s = is_pressed,
+                        "d" => keyboard_state.d = is_pressed,
+                        "-" => keyboard_state.minus = is_pressed,
+                        "+" => keyboard_state.plus = is_pressed,
+                        "f" => keyboard_state.f.event(is_pressed),
+                        "g" => keyboard_state.g.event(is_pressed),
+                        "h" => keyboard_state.h.event(is_pressed),
+                        _ => (),
+                    },
+                    winit::keyboard::Key::Unidentified(_) => (),
+                    winit::keyboard::Key::Dead(_) => (),
                 }
             }
             Event::AboutToWait => {
@@ -104,6 +162,11 @@ pub fn run_winit_loop(
 
                 camera.move_relative(&keyboard_state);
                 camera.zoom(&keyboard_state);
+                camera.set_focus(&mut keyboard_state, &objects);
+                camera.rot(&keyboard_state);
+                if keyboard_state.space.get_trigger() {
+                    objects.clear();
+                }
 
                 renderer.redraw(tick, &mut camera, &mut objects);
 

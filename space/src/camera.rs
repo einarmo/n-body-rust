@@ -1,13 +1,13 @@
 use std::mem::size_of;
 
-use cgmath::{InnerSpace, SquareMatrix, Vector3, Zero};
+use cgmath::{InnerSpace, Rad, SquareMatrix, Vector3, Zero};
 use wgpu::{
     BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindGroupLayoutDescriptor,
     BindGroupLayoutEntry, Buffer, BufferDescriptor, BufferUsages, Device, Queue,
 };
 use winit::dpi::PhysicalSize;
 
-use crate::event_loop::KeyboardState;
+use crate::{event_loop::KeyboardState, objects::Objects};
 
 pub struct Camera {
     pub eye: cgmath::Point3<f32>,
@@ -15,6 +15,7 @@ pub struct Camera {
     pub up: cgmath::Vector3<f32>,
     pub aspect: f32,
     pub fovy: f32,
+    focus: Option<i64>,
     matrix: cgmath::Matrix4<f32>,
     changed: bool,
     camera_buffer: Buffer,
@@ -41,6 +42,7 @@ impl Camera {
             up: cgmath::Vector3::unit_y(),
             aspect: size.width as f32 / size.height as f32,
             fovy: 45.0,
+            focus: None,
             changed: true,
             matrix: cgmath::Matrix4::from_diagonal((1.0, 1.0, 1.0, 1.0).into()),
             camera_buffer,
@@ -147,24 +149,109 @@ impl Camera {
         self.changed = true;
     }
 
+    pub fn set_focus(&mut self, keys: &mut KeyboardState, objects: &Objects) {
+        if keys.f.get_trigger() {
+            self.focus =
+                Some((self.focus.unwrap_or(1) - 1).rem_euclid(objects.num_objects() as i64));
+        }
+        if keys.g.get_trigger() {
+            self.focus =
+                Some((self.focus.unwrap_or(-1) + 1).rem_euclid(objects.num_objects() as i64));
+        }
+        if keys.h.get_trigger() {
+            self.focus = None;
+        }
+
+        if let Some(focus) = &self.focus {
+            let pos = objects.position_of(*focus as usize);
+            let rel = self.eye - self.target;
+            self.target.x = pos[0];
+            self.target.y = pos[1];
+            self.target.z = pos[2];
+            self.eye = self.target + rel;
+            self.changed = true;
+        }
+    }
+
     pub fn zoom(&mut self, keys: &KeyboardState) {
         if !keys.any_zoom() {
             return;
         }
 
-        const ZOOM_REL: f32 = 0.1f32;
-
-        let look_dir = (self.target - self.eye).normalize();
+        let look = self.target - self.eye;
+        let look_dir = look.normalize();
+        let look_mag = look.magnitude();
+        let zoom_rel = look_mag / 10.0;
 
         let mut rel = Vector3::zero();
         if keys.plus {
-            rel += look_dir * ZOOM_REL;
+            rel += look_dir * zoom_rel;
         }
         if keys.minus {
-            rel -= look_dir * ZOOM_REL;
+            rel -= look_dir * zoom_rel;
         }
-        self.target += rel;
         self.eye += rel;
+
+        self.changed = true;
+    }
+
+    pub fn rot(&mut self, keys: &KeyboardState) {
+        if !keys.any_rot() {
+            return;
+        }
+
+        // Do not precompute any vectors, since they might change if multiple keys are held
+        // at the same time.
+
+        if keys.home {
+            let look = self.target - self.eye;
+            let look_dir = look.normalize();
+            let rot = cgmath::Matrix3::from_axis_angle(look_dir, Rad(0.02));
+            self.up = rot * self.up;
+        }
+        if keys.pgup {
+            let look = self.target - self.eye;
+            let look_dir = look.normalize();
+            let rot = cgmath::Matrix3::from_axis_angle(look_dir, Rad(-0.02));
+            self.up = rot * self.up;
+        }
+
+        if keys.up {
+            let look = self.target - self.eye;
+            let look_dir = look.normalize();
+            // Rotate the inverse look vector around the perpendicular up vector
+            let look_perp = look_dir.cross(self.up);
+            let rot = cgmath::Matrix3::from_axis_angle(look_perp, Rad(0.02));
+            let new_rel = rot * (-look);
+
+            self.eye = self.target + new_rel;
+            self.up = rot * self.up;
+        }
+        if keys.down {
+            let look = self.target - self.eye;
+            let look_dir = look.normalize();
+            let look_perp = look_dir.cross(self.up);
+            let rot = cgmath::Matrix3::from_axis_angle(look_perp, Rad(-0.02));
+            let new_rel = rot * (-look);
+
+            self.eye = self.target + new_rel;
+            self.up = rot * self.up;
+        }
+
+        if keys.left {
+            let look = self.target - self.eye;
+            let rot = cgmath::Matrix3::from_axis_angle(self.up, Rad(-0.02));
+            let new_rel = rot * (-look);
+
+            self.eye = self.target + new_rel;
+        }
+        if keys.right {
+            let look = self.target - self.eye;
+            let rot = cgmath::Matrix3::from_axis_angle(self.up, Rad(0.02));
+            let new_rel = rot * (-look);
+
+            self.eye = self.target + new_rel;
+        }
 
         self.changed = true;
     }

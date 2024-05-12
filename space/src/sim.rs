@@ -5,18 +5,22 @@ use rayon::{ThreadPool, ThreadPoolBuilder};
 pub const AU: f64 = 1.495e11;
 // Mass of earth, in kilograms
 pub const M0: f64 = 5.972e24;
+
+pub const G_ABS: f64 = 6.674e-11;
 // Adjusted gravitational constant in earth masses and AU
-pub const G: f64 = 6.674e-11 * M0 / (AU * AU * AU);
+pub const G: f64 = G_ABS * M0 / (AU * AU * AU);
 // Seconds per computation (really!)
 pub const DELTA: f64 = 10.0;
 // Padding between all objects to avoid division by zero, 10 meters.
-pub const COLLISION_EPSILON: f64 = (10.0 / AU) * (10.0 / AU);
+// pub const COLLISION_EPSILON: f64 = (10.0 / AU) * (10.0 / AU);
+pub const COLLISION_EPSILON: f64 = 0.0;
 
 pub const _TEST: f64 = G * 333000.0;
 pub const _SPEED: f64 = 29.8e3 / AU;
 pub const _REF: f64 = 6.674e-11 * M0 * 333000.0 / (AU * AU);
 pub const _REF2: f64 = _REF / AU;
 
+#[derive(Debug)]
 pub struct ObjectInfo {
     pub pos: Point3<f64>,
     pub vel: Vector3<f64>,
@@ -26,7 +30,7 @@ pub struct ObjectInfo {
 impl ObjectInfo {
     pub fn get_acc_towards(&self, other: &ObjectInfo, out: &mut Vector3<f64>) {
         let rel = other.pos - self.pos;
-        *out += rel * other.mass * G / (rel.magnitude() + COLLISION_EPSILON);
+        *out += rel * other.mass * G / (rel.magnitude2() * rel.magnitude() + COLLISION_EPSILON);
     }
 }
 
@@ -87,6 +91,7 @@ impl ObjectBuffer {
         for (obj, acc) in self.objects.iter_mut().zip(self.out_buffer.iter_mut()) {
             obj.vel += *acc * DELTA;
             obj.pos += obj.vel * DELTA;
+            // println!("{:?}: {}", obj.pos, acc.magnitude());
             acc.x = 0.0;
             acc.y = 0.0;
             acc.z = 0.0;

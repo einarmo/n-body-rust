@@ -111,7 +111,7 @@ impl ObjectVertexCache {
         }
     }
 
-    pub fn push_items(&mut self, batch: PointBatch) {
+    pub fn push_items(&mut self, batch: &PointBatch) {
         assert!(batch.len() == self.num_objects);
 
         for point in batch.iter() {
@@ -157,6 +157,21 @@ impl ObjectVertexCache {
         }
         self.pending_head = self.pending_tail;
     }
+
+    pub fn position_of(&self, idx: usize) -> &[f32; 3] {
+        let mut vertex_idx_raw = idx as i64 - self.num_objects as i64 + self.pending_tail as i64;
+        if vertex_idx_raw < 0 {
+            vertex_idx_raw = TRAIL_MAX_LENGTH as i64 * self.num_objects as i64 - vertex_idx_raw;
+        }
+        &self.buff[vertex_idx_raw as usize].pos
+    }
+
+    pub fn clear(&mut self) {
+        self.head = 0;
+        self.tail = 0;
+        self.pending_head = 0;
+        self.pending_tail = 0;
+    }
 }
 
 pub struct Objects {
@@ -190,7 +205,10 @@ impl Objects {
     }
 
     pub fn push_items(&mut self, batch: PointBatch) {
-        self.vertices.push_items(batch);
+        self.vertices.push_items(&batch);
+        for (idx, pos) in batch.into_iter().enumerate() {
+            self.descriptions[idx].position = *pos;
+        }
     }
 
     pub fn get_index_range(&self) -> Range<u32> {
@@ -208,5 +226,14 @@ impl Objects {
 
     pub fn descriptions_mut(&mut self) -> &mut [ObjectInstance] {
         self.descriptions.as_mut_slice()
+    }
+
+    pub fn position_of(&self, idx: usize) -> &[f32; 3] {
+        let idx = idx % self.num_objects();
+        self.vertices.position_of(idx)
+    }
+
+    pub fn clear(&mut self) {
+        self.vertices.clear();
     }
 }
