@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use cgmath::{num_traits::Pow, Angle, Deg, InnerSpace, Point3, Rad, Vector3, Zero};
+use cgmath::{num_traits::Pow, Angle, Deg, InnerSpace, Point3, Rad, Vector3};
 
 use crate::{
     sim::{ObjectInfo, AU, G_ABS, M0},
@@ -82,8 +82,9 @@ fn compute_from_orbital_params(
     ));
 
     let radius = coords.semi_major_axis * (1.0 - coords.eccentricity * ecc_anomaly.cos());
-    let angular_momentum =
-        (mu * coords.semi_major_axis * (1.0 - coords.eccentricity.pow(2) as f64)).sqrt();
+    let angular_momentum_sq: f64 =
+        mu * coords.semi_major_axis * (1.0f64 - coords.eccentricity.pow(2));
+    let angular_momentum = angular_momentum_sq.sqrt();
     let l_an: Rad<f64> = Deg(coords.long_asc_node).into();
     let arg_per: Rad<f64> = Deg(coords.arg_periapsis).into();
     let inclination: Rad<f64> = Deg(coords.inclination).into();
@@ -175,7 +176,7 @@ pub fn convert_params(
     for i in (0..final_vec.len()).rev() {
         // Get own base momentum
         let obj = &final_vec[i];
-        if let Some(parent_idx) = obj.parent_index.clone() {
+        if let Some(parent_idx) = obj.parent_index {
             let parent_vel = final_vec[parent_idx].vel;
             let own_relative_momentum = (obj.vel - parent_vel) * (obj.mass + obj.children_mass);
 

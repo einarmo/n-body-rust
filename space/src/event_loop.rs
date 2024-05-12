@@ -24,9 +24,6 @@ pub struct KeyTrigger {
 }
 
 impl KeyTrigger {
-    pub fn new() -> Self {
-        Self::default()
-    }
     pub fn event(&mut self, is_pressed: bool) {
         match (self.pressed, is_pressed) {
             (true, true) => (),

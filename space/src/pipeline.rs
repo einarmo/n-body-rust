@@ -107,6 +107,7 @@ impl LineDrawPipeline {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn draw<'a: 'b, 'b>(
         &'a self,
         rpass: &mut RenderPass<'b>,

@@ -206,7 +206,7 @@ impl Objects {
 
     pub fn push_items(&mut self, batch: PointBatch) {
         self.vertices.push_items(&batch);
-        for (idx, pos) in batch.into_iter().enumerate() {
+        for (idx, pos) in batch.iter().enumerate() {
             self.descriptions[idx].position = *pos;
         }
     }

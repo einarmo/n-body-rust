@@ -47,6 +47,7 @@ pub struct Object {
     radius: f32,
 }
 
+#[allow(unused)]
 fn earth_sun_basic() -> Vec<Object> {
     vec![
         Object {
@@ -70,6 +71,7 @@ fn earth_sun_basic() -> Vec<Object> {
     ]
 }
 
+#[allow(clippy::excessive_precision)] // Copy-pasted from online sources
 fn earth_sun_parameter() -> Vec<Object> {
     convert_params([
         StandardParams {
