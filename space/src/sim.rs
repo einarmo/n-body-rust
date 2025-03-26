@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 use cgmath::{InnerSpace, Point3, Vector3, Zero};
 use rayon::{ThreadPool, ThreadPoolBuilder};
 
@@ -10,7 +12,7 @@ pub const G_ABS: f64 = 6.674e-11;
 // Adjusted gravitational constant in earth masses and AU
 pub const G: f64 = G_ABS * M0 / (AU * AU * AU);
 // Seconds per computation (really!)
-pub const DELTA: f64 = 10.0;
+pub const DELTA: f64 = 1000.0;
 // Padding between all objects to avoid division by zero, 10 meters.
 // pub const COLLISION_EPSILON: f64 = (10.0 / AU) * (10.0 / AU);
 pub const COLLISION_EPSILON: f64 = 0.0;
@@ -118,5 +120,50 @@ fn exec_iter_rec(
                 exec_iter_rec(objects, next, per_thread, idx + 1);
             },
         );
+    }
+}
+
+const SEC_PER_HOUR: f64 = 60.0 * 60.0;
+const SEC_PER_DAY: f64 = SEC_PER_HOUR * 24.0;
+const SEC_PER_YEAR: f64 = 365.25 * SEC_PER_DAY;
+
+pub struct ElapsedTime {
+    pub years: u64,
+    pub days: u64,
+    pub hours: u64,
+    pub minutes: u64,
+    pub seconds: f64,
+    pub ticks: u64,
+}
+
+impl Display for ElapsedTime {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}Y {}D {}:{}:{} ({} ticks)",
+            self.years, self.days, self.hours, self.minutes, self.seconds, self.ticks
+        )
+    }
+}
+
+pub fn compute_elapsed_time(ticks: u64) -> ElapsedTime {
+    let mut time_s = (ticks as f64) * DELTA;
+
+    let years = (time_s / SEC_PER_YEAR).floor();
+    time_s -= years * SEC_PER_YEAR;
+    let days = (time_s / SEC_PER_DAY).floor();
+    time_s -= days * SEC_PER_DAY;
+    let hours = (time_s / SEC_PER_HOUR).floor();
+    time_s -= hours * SEC_PER_HOUR;
+    let minutes = (time_s / 60.0).floor();
+    let seconds = time_s - minutes * 60.0;
+
+    ElapsedTime {
+        years: years as u64,
+        days: days as u64,
+        hours: hours as u64,
+        minutes: minutes as u64,
+        seconds,
+        ticks,
     }
 }

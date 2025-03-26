@@ -13,8 +13,11 @@ use winit::{
 };
 
 use crate::{
-    batch_request::BatchRequest, camera::Camera, objects::Objects, render::Renderer,
-    sim::ObjectBuffer,
+    batch_request::BatchRequest,
+    camera::Camera,
+    objects::Objects,
+    render::Renderer,
+    sim::{compute_elapsed_time, ObjectBuffer},
 };
 
 #[derive(Debug, Default, Clone)]
@@ -169,6 +172,13 @@ pub fn run_winit_loop(
 
                 let _last_draw = *next_tick_ref;
                 *next_tick_ref = Instant::now();
+
+                if tick % 60 == 0 {
+                    let sim_ticks = exchange.current_ticks();
+                    let actual_time = compute_elapsed_time(sim_ticks);
+
+                    println!("Elapsed time: {actual_time}");
+                }
                 // println!("Ticks since last: {:?}", *next_tick_ref - last_draw);
             }
             Event::WindowEvent {
@@ -187,10 +197,10 @@ pub fn run_winit_loop(
     Ok(())
 }
 
-const CHECK_INTERVAL: usize = 500;
+const CHECK_INTERVAL: u64 = 500;
 
 pub fn run_sim_loop(mut sim: ObjectBuffer, exchange: Arc<BatchRequest>, token: Arc<AtomicBool>) {
-    let mut i = 0;
+    let mut i = 0u64;
 
     loop {
         i += 1;
@@ -198,9 +208,7 @@ pub fn run_sim_loop(mut sim: ObjectBuffer, exchange: Arc<BatchRequest>, token: A
         sim.exec_iter();
         if i % CHECK_INTERVAL == 0 {
             if exchange.should_store() {
-                exchange.store(&sim);
-                // println!("Iterations since last sample: {}", i);
-                i = 0;
+                exchange.store(&sim, i);
             } else if token.load(Ordering::Relaxed) {
                 break;
             }
