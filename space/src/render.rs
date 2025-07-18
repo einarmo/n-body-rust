@@ -27,7 +27,6 @@ impl Renderer {
     pub fn new(
         surface: SurfaceState,
         window: &Window,
-        num_objects: usize,
         camera: &Camera,
         objects: &mut Objects,
     ) -> Self {
@@ -36,6 +35,7 @@ impl Renderer {
             contents: cast_slice(objects.descriptions_mut()),
             usage: BufferUsages::VERTEX,
         });
+        let num_objects = objects.num_objects();
 
         let camera_layout = surface
             .device
@@ -69,7 +69,7 @@ impl Renderer {
         let output = match surface_with_config.surface.get_current_texture() {
             Ok(surface) => surface,
             Err(err) => {
-                eprintln!("get_current_texture error: {err:?}");
+                // eprintln!("get_current_texture error: {err:?}");
                 match err {
                     wgpu::SurfaceError::Lost => {
                         surface_with_config.configure(&self.surface.device);
@@ -128,6 +128,7 @@ impl Renderer {
                     load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
                     store: wgpu::StoreOp::Store,
                 },
+                depth_slice: None,
             })],
             depth_stencil_attachment: None,
             ..Default::default()

@@ -2,20 +2,16 @@ use std::sync::{atomic::AtomicBool, Arc};
 
 use bytemuck::{Pod, Zeroable};
 use cgmath::Vector3;
-use event_loop::run_winit_loop;
 use parameters::{
     convert_params, AbsoluteCoords, RelativeCoords, RelativeOrAbsolute, StandardParams,
 };
-use pollster::FutureExt;
 use sim::M0;
-use surface::{get_surface, get_window};
+use winit::event_loop::{ControlFlow, EventLoop};
 
 use crate::{
     batch_request::BatchRequest,
-    camera::Camera,
-    event_loop::run_sim_loop,
+    event_loop::{run_sim_loop, SpaceApp},
     objects::Objects,
-    render::Renderer,
     sim::{ObjectBuffer, ObjectInfo, AU},
 };
 
@@ -125,7 +121,8 @@ fn earth_sun_parameter() -> Vec<Object> {
 }
 
 fn main() -> anyhow::Result<()> {
-    let window = get_window(1280.0, 640.0)?;
+    env_logger::init();
+    // let window = get_window(1280.0, 640.0)?;
 
     let objects = earth_sun_parameter();
 
@@ -149,27 +146,18 @@ fn main() -> anyhow::Result<()> {
     let token = Arc::new(AtomicBool::new(false));
     let token_clone = token.clone();
 
-    let surface = get_surface(&window.window).block_on()?;
-    let camera = Camera::new(window.window.inner_size(), &surface.device);
-    let renderer = Renderer::new(
-        surface,
-        &window.window,
-        num_objects,
-        &camera,
-        &mut buffer_data,
-    );
+    let mut app = SpaceApp::new(1280.0, 640.0, buffer_data, batch);
 
     let handle = std::thread::spawn(|| run_sim_loop(sim, batch_clone, token_clone));
 
-    run_winit_loop(window.event_loop, renderer, camera, batch, buffer_data)?;
+    let event_loop = EventLoop::new()?;
+    event_loop.set_control_flow(ControlFlow::Poll);
+
+    event_loop.run_app(&mut app)?;
 
     token.store(true, std::sync::atomic::Ordering::Relaxed);
     println!("Wait for task completion");
     handle.join().unwrap();
     println!("Task completed");
-
-    println!("Drop window");
-    drop(window.window);
-    println!("Window dropped");
     Ok(())
 }

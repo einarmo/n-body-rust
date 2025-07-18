@@ -11,3 +11,5 @@ codegen-units = 16
 [profile.dev.build-override]
 opt-level = 3
 
+[workspace.lints.rust]
+unexpected_cfgs = { level = "allow", check-cfg = ['cfg(target_arch, values("spirv"))'] }

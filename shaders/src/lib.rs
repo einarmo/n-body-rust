@@ -1,8 +1,9 @@
 #![allow(clippy::too_many_arguments)]
 #![cfg_attr(target_arch = "spirv", no_std)]
-use spirv_std::glam::{vec4, Vec3, Vec4};
-use spirv_std::spirv;
+#![deny(warnings)]
 
+use spirv_std::glam::{Vec3, Vec4, Vec4Swizzles, vec4};
+use spirv_std::spirv;
 #[repr(C)]
 pub struct ShaderConstants {
     pub width: u32,
@@ -44,9 +45,10 @@ pub fn line_vs(
 
 #[spirv(fragment)]
 pub fn line_fs(
-    color: Vec4,
-    #[spirv(push_constant)] _constants: &ShaderConstants,
+    in_color: Vec4,
+    // #[spirv(push_constant)] _constants: &ShaderConstants,
     output: &mut Vec4,
 ) {
-    *output = color;
+    //*output = Vec4::new(1.0, 1.0, 1.0, 1.0);
+    *output = in_color.xyz().extend(in_color.w);
 }

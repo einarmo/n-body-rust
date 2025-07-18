@@ -12,7 +12,7 @@ pub const G_ABS: f64 = 6.674e-11;
 // Adjusted gravitational constant in earth masses and AU
 pub const G: f64 = G_ABS * M0 / (AU * AU * AU);
 // Seconds per computation (really!)
-pub const DELTA: f64 = 1000.0;
+pub const DELTA: f64 = 10.0;
 // Padding between all objects to avoid division by zero, 10 meters.
 // pub const COLLISION_EPSILON: f64 = (10.0 / AU) * (10.0 / AU);
 pub const COLLISION_EPSILON: f64 = 0.0;

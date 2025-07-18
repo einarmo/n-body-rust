@@ -1,14 +1,14 @@
-use std::{
-    sync::{
-        atomic::{AtomicBool, Ordering},
-        Arc,
-    },
-    time::Instant,
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
 };
 
+use pollster::FutureExt;
 use winit::{
-    event::{ElementState, Event, WindowEvent},
-    event_loop::{ControlFlow, EventLoop},
+    application::ApplicationHandler,
+    dpi::LogicalSize,
+    event::{ElementState, WindowEvent},
+    event_loop::ActiveEventLoop,
     keyboard::NamedKey,
 };
 
@@ -18,6 +18,7 @@ use crate::{
     objects::Objects,
     render::Renderer,
     sim::{compute_elapsed_time, ObjectBuffer},
+    surface::{get_surface, get_window, WindowState},
 };
 
 #[derive(Debug, Default, Clone)]
@@ -80,68 +81,120 @@ impl KeyboardState {
     }
 }
 
-pub fn run_winit_loop(
-    evt_loop: EventLoop<()>,
-    mut renderer: Renderer,
-    mut camera: Camera,
+pub struct SpaceApp {
+    inner: Option<SpaceAppInner>,
+    size: LogicalSize<f32>,
     exchange: Arc<BatchRequest>,
-    mut objects: Objects,
-) -> anyhow::Result<()> {
-    let mut next_tick = Instant::now();
-    evt_loop.set_control_flow(ControlFlow::Poll);
-    let next_tick_ref = &mut next_tick;
+    objects: Objects,
+    tick: u32,
+    keyboard_state: KeyboardState,
+}
 
-    let mut keyboard_state = KeyboardState::default();
-    let mut tick = 0;
-    evt_loop.run(move |event, elwt| {
+impl SpaceApp {
+    pub fn new(init_w: f32, init_h: f32, objects: Objects, exchange: Arc<BatchRequest>) -> Self {
+        Self {
+            inner: None,
+            size: LogicalSize::new(init_w, init_h),
+            exchange,
+            objects,
+            tick: 0,
+            keyboard_state: KeyboardState::default(),
+        }
+    }
+}
+
+struct SpaceAppInner {
+    #[allow(unused)]
+    window: WindowState,
+    renderer: Renderer,
+    camera: Camera,
+}
+
+impl SpaceAppInner {
+    fn new(
+        event_loop: &ActiveEventLoop,
+        size: &LogicalSize<f32>,
+        objects: &mut Objects,
+    ) -> Result<Self, anyhow::Error> {
+        let window = get_window(event_loop, size.width, size.height)?;
+        let surface = get_surface(window.window.clone()).block_on()?;
+        let camera = Camera::new(window.window.inner_size(), &surface.device);
+        let renderer = Renderer::new(surface, &window.window, &camera, objects);
+
+        Ok(Self {
+            window,
+            renderer,
+            camera,
+        })
+    }
+}
+
+impl ApplicationHandler<()> for SpaceApp {
+    fn resumed(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
+        if self.inner.is_none() {
+            match SpaceAppInner::new(event_loop, &self.size, &mut self.objects) {
+                Ok(v) => self.inner = Some(v),
+                Err(e) => {
+                    eprintln!("Failed to initialize app: {e}");
+                    event_loop.exit();
+                    return;
+                }
+            }
+        }
+    }
+
+    fn window_event(
+        &mut self,
+        event_loop: &winit::event_loop::ActiveEventLoop,
+        _window_id: winit::window::WindowId,
+        event: WindowEvent,
+    ) {
+        if matches!(event, WindowEvent::CloseRequested) {
+            println!("The close button was pressed; stopping");
+            event_loop.exit();
+            return;
+        }
+
+        let Some(inner) = &mut self.inner else {
+            println!("Not initialized!");
+            return;
+        };
+
         match event {
-            Event::WindowEvent {
-                event: WindowEvent::CloseRequested,
-                ..
-            } => {
-                println!("The close button was pressed; stopping");
-                elwt.exit();
+            WindowEvent::Resized(size) => {
+                inner.renderer.resize(size);
+                inner.camera.resize(size);
             }
-            Event::WindowEvent {
-                event: WindowEvent::Resized(size),
-                ..
-            } => {
-                renderer.resize(size);
-                camera.resize(size);
-            }
-            Event::WindowEvent {
-                event: WindowEvent::KeyboardInput { event, .. },
-                ..
-            } => {
+            WindowEvent::KeyboardInput { event, .. } => {
                 let is_pressed = event.state == ElementState::Pressed;
                 match event.logical_key {
                     winit::keyboard::Key::Named(key) => match key {
-                        NamedKey::ArrowUp => keyboard_state.up = is_pressed,
-                        NamedKey::ArrowLeft => keyboard_state.left = is_pressed,
-                        NamedKey::ArrowDown => keyboard_state.down = is_pressed,
-                        NamedKey::ArrowRight => keyboard_state.right = is_pressed,
-                        NamedKey::Home => keyboard_state.home = is_pressed,
-                        NamedKey::PageUp => keyboard_state.pgup = is_pressed,
-                        NamedKey::Space => keyboard_state.space.event(is_pressed),
+                        NamedKey::ArrowUp => self.keyboard_state.up = is_pressed,
+                        NamedKey::ArrowLeft => self.keyboard_state.left = is_pressed,
+                        NamedKey::ArrowDown => self.keyboard_state.down = is_pressed,
+                        NamedKey::ArrowRight => self.keyboard_state.right = is_pressed,
+                        NamedKey::Home => self.keyboard_state.home = is_pressed,
+                        NamedKey::PageUp => self.keyboard_state.pgup = is_pressed,
+                        NamedKey::Space => self.keyboard_state.space.event(is_pressed),
                         _ => (),
                     },
                     winit::keyboard::Key::Character(code) => match code.as_str() {
-                        "w" => keyboard_state.w = is_pressed,
-                        "a" => keyboard_state.a = is_pressed,
-                        "s" => keyboard_state.s = is_pressed,
-                        "d" => keyboard_state.d = is_pressed,
-                        "-" => keyboard_state.minus = is_pressed,
-                        "+" => keyboard_state.plus = is_pressed,
-                        "f" => keyboard_state.f.event(is_pressed),
-                        "g" => keyboard_state.g.event(is_pressed),
-                        "h" => keyboard_state.h.event(is_pressed),
+                        "w" => self.keyboard_state.w = is_pressed,
+                        "a" => self.keyboard_state.a = is_pressed,
+                        "s" => self.keyboard_state.s = is_pressed,
+                        "d" => self.keyboard_state.d = is_pressed,
+                        "-" => self.keyboard_state.minus = is_pressed,
+                        "+" => self.keyboard_state.plus = is_pressed,
+                        "f" => self.keyboard_state.f.event(is_pressed),
+                        "g" => self.keyboard_state.g.event(is_pressed),
+                        "h" => self.keyboard_state.h.event(is_pressed),
                         _ => (),
                     },
                     winit::keyboard::Key::Unidentified(_) => (),
                     winit::keyboard::Key::Dead(_) => (),
                 }
             }
-            Event::AboutToWait => {
+            WindowEvent::RedrawRequested => {
                 // Application update code.
 
                 // Queue a RedrawRequested event.
@@ -156,45 +209,40 @@ pub fn run_winit_loop(
                 //}
                 //elwt.set_control_flow(ControlFlow::WaitUntil(*next_tick_ref));
 
-                tick += 1;
+                self.tick += 1;
 
-                exchange.sample(&mut objects);
+                self.exchange.sample(&mut self.objects);
 
-                camera.move_relative(&keyboard_state);
-                camera.zoom(&keyboard_state);
-                camera.set_focus(&mut keyboard_state, &objects);
-                camera.rot(&keyboard_state);
-                if keyboard_state.space.get_trigger() {
-                    objects.clear();
+                inner.camera.move_relative(&self.keyboard_state);
+                inner.camera.zoom(&self.keyboard_state);
+                inner
+                    .camera
+                    .set_focus(&mut self.keyboard_state, &self.objects);
+                inner.camera.rot(&self.keyboard_state);
+                if self.keyboard_state.space.get_trigger() {
+                    self.objects.clear();
                 }
 
-                renderer.redraw(tick, &mut camera, &mut objects);
+                inner
+                    .renderer
+                    .redraw(self.tick, &mut inner.camera, &mut self.objects);
+                //
+                // let _last_draw = *next_tick_ref;
+                // *next_tick_ref = Instant::now();
 
-                let _last_draw = *next_tick_ref;
-                *next_tick_ref = Instant::now();
-
-                if tick % 60 == 0 {
-                    let sim_ticks = exchange.current_ticks();
+                if self.tick % 60 == 0 {
+                    let sim_ticks = self.exchange.current_ticks();
                     let actual_time = compute_elapsed_time(sim_ticks);
 
                     println!("Elapsed time: {actual_time}");
                 }
                 // println!("Ticks since last: {:?}", *next_tick_ref - last_draw);
-            }
-            Event::WindowEvent {
-                event: WindowEvent::RedrawRequested,
-                ..
-            } => {
-                // Redraw the application.
-                //
-                // It's preferable for applications that do not render continuously to render in
-                // this event rather than in AboutToWait, since rendering in here allows
-                // the program to gracefully handle redraws requested by the OS.
+
+                inner.window.window.request_redraw();
             }
             _ => (),
         }
-    })?;
-    Ok(())
+    }
 }
 
 const CHECK_INTERVAL: u64 = 500;

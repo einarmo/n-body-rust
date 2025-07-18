@@ -1,13 +1,17 @@
 [package]
 name = "shaders"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+
+[lints]
+workspace = true
 
 [lib]
 crate-type = ["dylib"]
 
 [dependencies]
-spirv-std = { version = "0.9" }
+spirv-std = { git = "https://github.com/Rust-GPU/rust-gpu", rev = "8ee9f2f99788134a9c0912238add509539742596" }
 

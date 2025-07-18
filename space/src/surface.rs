@@ -1,25 +1,23 @@
 use std::sync::Arc;
 
-use anyhow::anyhow;
 use wgpu::{Adapter, CreateSurfaceError, Device, Queue, Surface, SurfaceConfiguration};
-use winit::{
-    event_loop::EventLoop,
-    window::{Window, WindowBuilder},
-};
+use winit::{dpi::LogicalSize, event_loop::ActiveEventLoop, window::Window};
 
 pub struct WindowState {
-    pub event_loop: EventLoop<()>,
-    pub window: Window,
+    pub window: Arc<Window>,
 }
 
-pub fn get_window(init_w: f32, init_h: f32) -> anyhow::Result<WindowState> {
-    let event_loop = EventLoop::new()?;
-    let window = WindowBuilder::new()
-        .with_title("Rust GPU - wgpu")
-        .with_inner_size(winit::dpi::LogicalSize::new(init_w, init_h))
-        .build(&event_loop)?;
-
-    Ok(WindowState { event_loop, window })
+pub fn get_window(
+    event_loop: &ActiveEventLoop,
+    init_w: f32,
+    init_h: f32,
+) -> anyhow::Result<WindowState> {
+    let window = event_loop.create_window(
+        Window::default_attributes().with_inner_size(LogicalSize::new(init_w, init_h)),
+    )?;
+    Ok(WindowState {
+        window: Arc::new(window),
+    })
 }
 
 pub struct SurfaceState {
@@ -35,9 +33,9 @@ impl SurfaceWithConfig {
     }
 }
 
-pub async fn get_surface(window: &Window) -> anyhow::Result<SurfaceState> {
-    let backends = wgpu::util::backend_bits_from_env().unwrap_or(wgpu::Backends::VULKAN);
-    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+pub async fn get_surface(window: Arc<Window>) -> anyhow::Result<SurfaceState> {
+    let backends = wgpu::Backends::from_env().unwrap_or(wgpu::Backends::VULKAN);
+    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
         backends,
         ..Default::default()
     });
@@ -46,30 +44,27 @@ pub async fn get_surface(window: &Window) -> anyhow::Result<SurfaceState> {
         println!("{:?}", inst.get_info());
     }
 
-    let surface = unsafe { instance.create_surface(&window) };
+    let surface = instance.create_surface(window.clone());
     let adapter = wgpu::util::initialize_adapter_from_env_or_default(
         &instance, // Request an adapter which can render to our surface
         surface.as_ref().ok(),
     )
-    .await
-    .ok_or(anyhow!("Failed to find an appropriate adapter"))?;
+    .await?;
 
     println!("using: {:?}", adapter.get_info());
 
     let (device, queue) = adapter
-        .request_device(
-            &wgpu::DeviceDescriptor {
-                label: None,
-                features: wgpu::Features::PUSH_CONSTANTS
-                    | wgpu::Features::SPIRV_SHADER_PASSTHROUGH
-                    | wgpu::Features::MAPPABLE_PRIMARY_BUFFERS,
-                limits: wgpu::Limits {
-                    max_push_constant_size: 128,
-                    ..Default::default()
-                },
+        .request_device(&wgpu::DeviceDescriptor {
+            label: None,
+            required_features: wgpu::Features::PUSH_CONSTANTS
+                | wgpu::Features::SPIRV_SHADER_PASSTHROUGH
+                | wgpu::Features::MAPPABLE_PRIMARY_BUFFERS,
+            required_limits: wgpu::Limits {
+                max_push_constant_size: 128,
+                ..Default::default()
             },
-            None,
-        )
+            ..Default::default()
+        })
         .await?;
 
     let surface = surface
@@ -84,14 +79,14 @@ pub async fn get_surface(window: &Window) -> anyhow::Result<SurfaceState> {
 }
 
 pub struct SurfaceWithConfig {
-    pub surface: Surface,
+    pub surface: Surface<'static>,
     pub config: SurfaceConfiguration,
 }
 
 fn auto_configure_surface(
     adapter: &Adapter,
     device: &Device,
-    surface: wgpu::Surface,
+    surface: wgpu::Surface<'static>,
     size: winit::dpi::PhysicalSize<u32>,
 ) -> SurfaceWithConfig {
     let mut surface_config = surface
@@ -107,5 +102,3 @@ fn auto_configure_surface(
         config: surface_config,
     }
 }
-
-impl SurfaceState {}

@@ -2,7 +2,8 @@ use std::ops::Range;
 
 use wgpu::{
     util::DeviceExt, BindGroup, BindGroupLayout, BlendComponent, BlendFactor, BlendState, Buffer,
-    PipelineLayoutDescriptor, PrimitiveState, RenderPass, RenderPipeline, RenderPipelineDescriptor,
+    PipelineCompilationOptions, PipelineLayoutDescriptor, PrimitiveState, RenderPass,
+    RenderPipeline, RenderPipelineDescriptor,
 };
 
 use crate::{
@@ -33,8 +34,24 @@ impl LineDrawPipeline {
                 }],
             });
 
+        let mut index_list: Vec<u32> = Vec::with_capacity(TRAIL_MAX_LENGTH * 2);
+
+        for _ in 0..2 {
+            for i in 0..TRAIL_MAX_LENGTH {
+                index_list.push((i * num_objects) as u32);
+            }
+        }
+
+        let index_buffer = surface
+            .device
+            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("Index Buffer"),
+                contents: bytemuck::cast_slice(&index_list),
+                usage: wgpu::BufferUsages::INDEX,
+            });
+
         let shader = wgpu::include_spirv_raw!(env!("shaders.spv"));
-        let shader_module = unsafe { surface.device.create_shader_module_spirv(&shader) };
+        let shader_module = unsafe { surface.device.create_shader_module_passthrough(shader) };
 
         let color_format = surface.surface.as_ref().map_or_else(
             |_: &wgpu::CreateSurfaceError| wgpu::TextureFormat::Rgba8UnormSrgb,
@@ -48,9 +65,11 @@ impl LineDrawPipeline {
                 layout: Some(&pipeline_layout),
                 vertex: wgpu::VertexState {
                     module: &shader_module,
-                    entry_point: "line_vs",
+                    entry_point: Some("line_vs"),
                     buffers: &[Vertex::layout(), ObjectInstance::layout()],
+                    compilation_options: PipelineCompilationOptions::default(),
                 },
+                cache: None,
                 primitive: PrimitiveState {
                     topology: wgpu::PrimitiveTopology::LineStrip,
                     strip_index_format: None,
@@ -68,7 +87,7 @@ impl LineDrawPipeline {
                 },
                 fragment: Some(wgpu::FragmentState {
                     module: &shader_module,
-                    entry_point: "line_fs",
+                    entry_point: Some("line_fs"),
                     targets: &[Some(wgpu::ColorTargetState {
                         format: color_format,
                         blend: Some(BlendState {
@@ -81,24 +100,9 @@ impl LineDrawPipeline {
                         }),
                         write_mask: wgpu::ColorWrites::ALL,
                     })],
+                    compilation_options: PipelineCompilationOptions::default(),
                 }),
                 multiview: None,
-            });
-
-        let mut index_list: Vec<u32> = Vec::with_capacity(TRAIL_MAX_LENGTH * 2);
-
-        for _ in 0..2 {
-            for i in 0..TRAIL_MAX_LENGTH {
-                index_list.push((i * num_objects) as u32);
-            }
-        }
-
-        let index_buffer = surface
-            .device
-            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("Index Buffer"),
-                contents: bytemuck::cast_slice(&index_list),
-                usage: wgpu::BufferUsages::INDEX,
             });
 
         Self {
