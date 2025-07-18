@@ -5,6 +5,7 @@ use std::sync::Mutex;
 use crate::objects::Objects;
 use crate::sim::ObjectBuffer;
 
+/// Primitive for communicating between simulation and graphics.
 pub struct BatchRequest {
     sample: Mutex<Vec<[f32; 3]>>,
     should_sample: AtomicBool,
@@ -20,12 +21,14 @@ impl BatchRequest {
         }
     }
 
+    /// Return whether we are ready to a accept a new simulation batch.
     pub fn should_store(&self) -> bool {
         self.should_sample
-            .compare_exchange_weak(true, false, Ordering::Acquire, Ordering::SeqCst)
+            .compare_exchange_weak(true, false, Ordering::Relaxed, Ordering::Relaxed)
             .is_ok()
     }
 
+    /// Store a sample of each simulated object, as well as the current tick.
     pub fn store(&self, sim: &ObjectBuffer, tick: u64) {
         self.simulation_tick.store(tick, Ordering::Relaxed);
         let mut data = self.sample.lock().unwrap();
@@ -36,10 +39,11 @@ impl BatchRequest {
         }
     }
 
+    /// Retrieve a sample, and request a new one from the simulation.
     pub fn sample(&self, objects: &mut Objects) {
         let data = self.sample.lock().unwrap();
         objects.push_items(&data);
-        self.should_sample.store(true, Ordering::SeqCst);
+        self.should_sample.store(true, Ordering::Relaxed);
     }
 
     pub fn current_ticks(&self) -> u64 {

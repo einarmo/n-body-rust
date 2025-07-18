@@ -39,7 +39,7 @@ impl ObjectInfo {
 pub struct ObjectBuffer {
     pub objects: Vec<ObjectInfo>,
     out_buffer: Vec<Vector3<f64>>,
-    n_threads: usize,
+    per_thread: usize,
     pool: ThreadPool,
 }
 
@@ -48,7 +48,7 @@ const OBJECTS_PER_THREAD: usize = 10;
 
 pub fn compute_target_threads(n_objects: usize) -> usize {
     assert!(n_objects > 0);
-    (((n_objects as f32) / (OBJECTS_PER_THREAD as f32)).ceil() as usize).min(MAX_THREADS)
+    n_objects.div_ceil(OBJECTS_PER_THREAD).min(MAX_THREADS)
 }
 
 fn iter_chunk(objects: &[ObjectInfo], out_buffer: &mut [Vector3<f64>], start: usize) {
@@ -73,9 +73,9 @@ impl ObjectBuffer {
         let n_threads = compute_target_threads(objects.len());
 
         Self {
+            per_thread: objects.len().div_ceil(n_threads),
             objects,
             out_buffer,
-            n_threads,
             pool: ThreadPoolBuilder::new()
                 .num_threads(n_threads)
                 .build()
@@ -84,16 +84,17 @@ impl ObjectBuffer {
     }
 
     pub fn exec_iter(&mut self) {
-        let mut per_thread = self.objects.len() / self.n_threads;
-        if self.objects.len() % self.n_threads > 0 {
-            per_thread += 1;
-        }
+        // Number of objects per thread is equal to ceil[num_objects / num_threads]
         self.pool
-            .install(|| exec_iter_rec(&self.objects, &mut self.out_buffer, per_thread, 0));
+            .install(|| exec_iter_rec(&self.objects, &mut self.out_buffer, self.per_thread, 0));
         for (obj, acc) in self.objects.iter_mut().zip(self.out_buffer.iter_mut()) {
+            // Integrate the acceleration by multiplying it with the time step
+            // and add it to the velocity
             obj.vel += *acc * DELTA;
+            // Integrate the velocity by multiplying it with the time step
+            // and add it to the position
             obj.pos += obj.vel * DELTA;
-            // println!("{:?}: {}", obj.pos, acc.magnitude());
+            // We keep the acceleration object for the next iteration, but we need to reset it.
             acc.x = 0.0;
             acc.y = 0.0;
             acc.z = 0.0;
@@ -107,11 +108,10 @@ fn exec_iter_rec(
     per_thread: usize,
     idx: usize,
 ) {
-    let next = (idx + 1) * per_thread;
-    if next >= objects.len() {
+    if per_thread >= out_buffer.len() {
         iter_chunk(objects, out_buffer, idx * per_thread);
     } else {
-        let (slice, next) = out_buffer.split_at_mut(next);
+        let (slice, next) = out_buffer.split_at_mut(per_thread);
         rayon::join(
             || {
                 iter_chunk(objects, slice, idx * per_thread);

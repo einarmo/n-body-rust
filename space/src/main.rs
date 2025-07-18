@@ -1,18 +1,18 @@
-use std::sync::{atomic::AtomicBool, Arc};
+use std::sync::{Arc, atomic::AtomicBool};
 
 use bytemuck::{Pod, Zeroable};
 use cgmath::Vector3;
 use parameters::{
-    convert_params, AbsoluteCoords, RelativeCoords, RelativeOrAbsolute, StandardParams,
+    AbsoluteCoords, RelativeCoords, RelativeOrAbsolute, StandardParams, convert_params,
 };
 use sim::M0;
 use winit::event_loop::{ControlFlow, EventLoop};
 
 use crate::{
     batch_request::BatchRequest,
-    event_loop::{run_sim_loop, SpaceApp},
+    event_loop::{SpaceApp, run_sim_loop},
     objects::Objects,
-    sim::{ObjectBuffer, ObjectInfo, AU},
+    sim::{AU, ObjectBuffer, ObjectInfo},
 };
 
 mod batch_request;
@@ -113,6 +113,23 @@ fn earth_sun_parameter() -> Vec<Object> {
             mass: 7.349e22 / M0,
             radius: 1737e3,
             color: (1.0, 1.0, 1.0).into(),
+        },
+        // Give the moon a tiny satelite
+        StandardParams {
+            name: Some("moon-satellite".to_owned()),
+            coordinates: RelativeOrAbsolute::Relative(RelativeCoords {
+                parent: "moon".to_owned(),
+                semi_major_axis: 1.0e7, // 100km
+                eccentricity: 0.0,
+                inclination: 0.0,
+                arg_periapsis: 0.0,
+                long_asc_node: 0.0,
+                true_an: 0.0,
+            }),
+            // Make it fucking huge
+            mass: 7.349e22 / M0,      // 1000kg
+            radius: 10.0 / AU as f32, // 10m
+            color: (0.5, 0.5, 0.5).into(),
         },
     ])
     .into_iter()

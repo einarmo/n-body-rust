@@ -22,6 +22,7 @@ pub fn get_window(
 
 pub struct SurfaceState {
     pub surface: Result<SurfaceWithConfig, CreateSurfaceError>,
+    #[expect(unused)]
     pub adapter: Adapter,
     pub device: Arc<Device>,
     pub queue: Queue,

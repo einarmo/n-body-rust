@@ -38,15 +38,6 @@ impl Vertex {
     }
 }
 
-#[derive(Clone)]
-pub struct ObjectTrailInner(pub [Vertex; TRAIL_MAX_LENGTH]);
-
-impl Default for ObjectTrailInner {
-    fn default() -> Self {
-        Self([Vertex::default(); TRAIL_MAX_LENGTH])
-    }
-}
-
 pub struct ObjectVertexCache {
     buff: Vec<Vertex>,
     num_objects: usize,
@@ -112,7 +103,7 @@ impl ObjectVertexCache {
     }
 
     pub fn push_items(&mut self, batch: &PointBatch) {
-        assert!(batch.len() == self.num_objects);
+        debug_assert!(batch.len() == self.num_objects);
 
         for point in batch.iter() {
             self.buff[self.pending_tail] = Vertex {

@@ -1,10 +1,10 @@
 use std::collections::HashMap;
 
-use cgmath::{num_traits::Pow, Angle, Deg, InnerSpace, Point3, Rad, Vector3};
+use cgmath::{Angle, Deg, InnerSpace, Point3, Rad, Vector3, Zero, num_traits::Pow};
 
 use crate::{
-    sim::{ObjectInfo, AU, G_ABS, M0},
     Object,
+    sim::{AU, G_ABS, M0, ObjectInfo},
 };
 
 pub struct ConvertedOrbitalParams {
@@ -17,6 +17,8 @@ pub struct ConvertedOrbitalParams {
     radius: f32,
     mass: f64,
     children_mass: f64,
+    children_relative_momentum: Vector3<f64>,
+    children: Vec<usize>,
 }
 
 impl From<ConvertedOrbitalParams> for Object {
@@ -127,6 +129,14 @@ fn compute_from_orbital_params(
     }
 }
 
+fn apply_vdiff_rec(objects: &mut [ConvertedOrbitalParams], idx: usize, v_diff: Vector3<f64>) {
+    let obj = &mut objects[idx];
+    obj.vel -= v_diff;
+    for child in obj.children.clone() {
+        apply_vdiff_rec(objects, child, v_diff);
+    }
+}
+
 pub fn convert_params(
     items: impl IntoIterator<Item = StandardParams>,
 ) -> Vec<ConvertedOrbitalParams> {
@@ -137,7 +147,7 @@ pub fn convert_params(
         let (absolute_coords, parent_idx) = match item.coordinates {
             RelativeOrAbsolute::Absolute(x) => (x, None),
             RelativeOrAbsolute::Relative(r) => {
-                let parent = map.get(&r.parent).unwrap();
+                let parent = map.get(&r.parent).expect("Parent not found");
                 (
                     compute_from_orbital_params(parent, r, item.mass),
                     Some(parent.index),
@@ -159,6 +169,8 @@ pub fn convert_params(
             radius: item.radius,
             mass: item.mass,
             children_mass: 0.0,
+            children_relative_momentum: Vector3::zero(),
+            children: Vec::new(),
         };
 
         res.push(params.name.clone());
@@ -170,22 +182,40 @@ pub fn convert_params(
         final_vec.push(map.remove(&name).unwrap());
     }
 
-    // Modify parents with inverse momentum to compensate, making the barycenter
-    // of the system fixed.
+    // Parent relationships form a tree, for each level of the tree, starting from the leaf nodes,
+    // - compute the mass and relative momentum of the _children_ of the node,
+    //   meaning the additional momentum added to the system by the initial orbits of the children.
+    // - divide that by the total mass of the system, to get the added _velocity_ introduced by
+    //   the children, and thus how the initial orbits of the children will, in total, affect the
+    //   orbit of the current node.
+    // - slow every object in the system by that delta velocity. Effectively this should ensure that
+    //   the barycenter of the system has the desired orbit. Of course once these hierarchies get very nested,
+    //   everything is subject to disturbances from other parts of the system.
 
+    // Note that we iterate in reverse. The construction above guarantees that
+    // the input is already topologically sorted.
     for i in (0..final_vec.len()).rev() {
-        // Get own base momentum
+        // Get the delta velocity to apply.
+        let v_diff = final_vec[i].children_relative_momentum
+            / (final_vec[i].mass + final_vec[i].children_mass);
+
+        // Recursively apply the delta-v.
+        apply_vdiff_rec(&mut final_vec, i, v_diff);
         let obj = &final_vec[i];
+
+        // Compute cumulative momentum for
         if let Some(parent_idx) = obj.parent_index {
             let parent_vel = final_vec[parent_idx].vel;
-            let own_relative_momentum = (obj.vel - parent_vel) * (obj.mass + obj.children_mass);
+            // The momentum of the system, plus the relative momentum of the children, after adjusting.
+            // This is effectively the _original_ velocity times system mass, since we re-add the children relative momentum we
+            // subtracted from the system above.
+            let own_relative_momentum = (obj.vel - parent_vel) * (obj.mass + obj.children_mass)
+                + obj.children_relative_momentum;
 
-            let parent_mass = final_vec[parent_idx].mass;
             final_vec[parent_idx].children_mass += obj.mass + obj.children_mass;
-            final_vec[parent_idx].vel -= own_relative_momentum / parent_mass;
+            final_vec[parent_idx].children_relative_momentum += own_relative_momentum;
+            final_vec[parent_idx].children.push(i);
         }
-
-        // Add inverse of child momentum
     }
 
     final_vec
