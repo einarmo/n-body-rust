@@ -28,7 +28,6 @@ pub fn line_vs(
     input_pos: Vec3,
     input_idx: u32,
     instance_color: Vec3,
-    _instance_pos: Vec3,
     _instance_size: f32,
     #[spirv(uniform, descriptor_set = 0, binding = 0)] camera_uniform: &CameraUniform,
     #[spirv(position, invariant)] out_pos: &mut Vec4,
@@ -73,8 +72,9 @@ const CLIP_SPACE_COORD_QUAD_CCW: [Vec2; 6] = {
 pub fn circle_vs(
     #[spirv(push_constant)] constants: &ShaderConstants,
     #[spirv(vertex_index)] vertex_id: u32,
-    input_instance_color: Vec3,
     input_instance_pos: Vec3,
+    _input_idx: u32,
+    input_instance_color: Vec3,
     input_instance_size: f32,
     #[spirv(uniform, descriptor_set = 0, binding = 0)] camera_uniform: &CameraUniform,
     #[spirv(position)] out_pos: &mut Vec4,
@@ -93,7 +93,7 @@ pub fn circle_vs(
     let pert_view = center_view + Vec4::new(1.0, 0.0, 0.0, 0.0) * input_instance_size;
     let pert_proj = camera_uniform.projection * pert_view;
 
-    let projected_size = (pert_proj - center_proj).xy().length().max(0.01);
+    let projected_size = (pert_proj - center_proj).xy().length();
 
     // real size / distance = projected size / near plane distance
 
@@ -102,6 +102,7 @@ pub fn circle_vs(
         center_proj.z,
         center_proj.w,
     ));
+
     *out_color = Vec4::from((input_instance_color, 1.0));
     *out_uv = raw;
 }

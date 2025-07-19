@@ -1,7 +1,6 @@
 use std::sync::OnceLock;
 
 use bytemuck::cast_slice;
-use cgmath::Vector4;
 use wgpu::{
     BindGroup, Buffer, BufferDescriptor, BufferUsages, CommandEncoder, Device,
     RenderPassDescriptor, ShaderModule, TextureView,
@@ -47,7 +46,7 @@ impl Renderer {
         let instance_buffer = surface.device.create_buffer_init(&BufferInitDescriptor {
             label: Some("instance buffer"),
             contents: cast_slice(objects.descriptions_mut()),
-            usage: BufferUsages::VERTEX | BufferUsages::COPY_DST,
+            usage: BufferUsages::VERTEX,
         });
         let num_objects = objects.num_objects();
 
@@ -101,7 +100,6 @@ impl Renderer {
             }
         };
         objects.flush_to_buffer(&self.point_buffer, &self.surface.queue);
-        objects.flush_descriptions(&self.instance_buffer, &self.surface.queue);
         camera.flush_if_needed(&self.surface.queue);
 
         /* let epos = objects.descriptions_mut()[1].position;
@@ -183,6 +181,8 @@ impl Renderer {
         self.circle_pipeline.draw(
             &mut rpass,
             &self.camera_bind_group,
+            objects.get_last_batch_range(),
+            &self.point_buffer,
             &self.instance_buffer,
             &push_constants,
             objects.num_objects(),

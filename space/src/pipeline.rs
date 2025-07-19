@@ -65,7 +65,7 @@ impl LineDrawPipeline {
                 vertex: wgpu::VertexState {
                     module: shader_module,
                     entry_point: Some("line_vs"),
-                    buffers: &[Vertex::layout(), ObjectInstance::layout()],
+                    buffers: &[Vertex::layout::<true>(), ObjectInstance::layout::<2>()],
                     compilation_options: PipelineCompilationOptions::default(),
                 },
                 cache: None,

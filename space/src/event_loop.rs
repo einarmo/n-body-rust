@@ -3,7 +3,6 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
 };
 
-use cgmath::{InnerSpace, Vector3, Vector4};
 use pollster::FutureExt;
 use winit::{
     application::ApplicationHandler,
@@ -228,7 +227,8 @@ impl ApplicationHandler<()> for SpaceApp {
                     .renderer
                     .redraw(self.tick, &mut inner.camera, &mut self.objects);
 
-                /* let earth = &self.objects.descriptions_mut()[1];
+                /* use cgmath::{InnerSpace, Vector3, Vector4};
+                let earth = &self.objects.descriptions_mut()[1];
                 let earth_pos =
                     Vector4::from((earth.position[0], earth.position[1], earth.position[2], 1.0));
                 let earth_view = inner.camera.view() * earth_pos;

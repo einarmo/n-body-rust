@@ -265,14 +265,15 @@ impl Camera {
         self.changed = true;
     }
 
+    #[allow(unused)]
     pub fn matrix(&self) -> Matrix4<f32> {
         self.view_proj
     }
-
+    #[allow(unused)]
     pub fn view(&self) -> Matrix4<f32> {
         self.view
     }
-
+    #[allow(unused)]
     pub fn projection(&self) -> Matrix4<f32> {
         self.projection
     }

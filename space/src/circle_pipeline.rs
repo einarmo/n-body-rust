@@ -1,11 +1,14 @@
 use wgpu::{
     BindGroup, BindGroupLayout, BlendComponent, BlendFactor, BlendState, Buffer,
     PipelineCompilationOptions, PipelineLayoutDescriptor, PrimitiveState, RenderPass,
-    RenderPipeline, RenderPipelineDescriptor, Surface, VertexBufferLayout,
+    RenderPipeline, RenderPipelineDescriptor,
 };
 
 use crate::{
-    ShaderConstants, objects::ObjectInstance, render::get_or_init_shader, surface::SurfaceState,
+    ShaderConstants,
+    objects::{ObjectInstance, Vertex},
+    render::get_or_init_shader,
+    surface::SurfaceState,
 };
 
 pub(crate) struct CircleDrawPipeline {
@@ -39,7 +42,7 @@ impl CircleDrawPipeline {
                 vertex: wgpu::VertexState {
                     module: shader_module,
                     entry_point: Some("circle_vs"),
-                    buffers: &[ObjectInstance::layout_zero_offset()],
+                    buffers: &[Vertex::layout::<false>(), ObjectInstance::layout::<2>()],
                     compilation_options: Default::default(),
                 },
                 cache: None,
@@ -85,13 +88,21 @@ impl CircleDrawPipeline {
         &'a self,
         rpass: &mut RenderPass<'b>,
         camera: &'b BindGroup,
+        last_batch_range: std::ops::Range<u64>,
+        point_buffer: &'b Buffer,
         instance_buffer: &'b Buffer,
         push_constants: &ShaderConstants,
         num_objects: usize,
     ) {
+        let last_batch_range =
+            (last_batch_range.start * Vertex::size())..(last_batch_range.end * Vertex::size());
+
         rpass.set_pipeline(&self.pipeline);
-        rpass.set_vertex_buffer(0, instance_buffer.slice(..));
+        rpass.set_vertex_buffer(0, point_buffer.slice(last_batch_range));
+        rpass.set_vertex_buffer(1, instance_buffer.slice(..));
+
         rpass.set_bind_group(0, camera, &[]);
+
         rpass.set_push_constants(
             wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
             0,

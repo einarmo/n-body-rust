@@ -1,6 +1,5 @@
 use std::ops::Range;
 
-use bytemuck::cast_slice;
 use wgpu::{Buffer, Queue, VertexAttribute, VertexBufferLayout};
 
 use crate::Object;
@@ -19,10 +18,14 @@ pub struct Vertex {
 }
 
 impl Vertex {
-    pub const fn layout() -> VertexBufferLayout<'static> {
+    pub const fn layout<const VERTEX: bool>() -> VertexBufferLayout<'static> {
         VertexBufferLayout {
             array_stride: std::mem::size_of::<Vertex>() as u64,
-            step_mode: wgpu::VertexStepMode::Vertex,
+            step_mode: if VERTEX {
+                wgpu::VertexStepMode::Vertex
+            } else {
+                wgpu::VertexStepMode::Instance
+            },
             attributes: &[
                 VertexAttribute {
                     format: wgpu::VertexFormat::Float32x3,
@@ -36,6 +39,10 @@ impl Vertex {
                 },
             ],
         }
+    }
+
+    pub const fn size() -> u64 {
+        std::mem::size_of::<Vertex>() as u64
     }
 }
 
@@ -52,12 +59,11 @@ pub struct ObjectVertexCache {
 #[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct ObjectInstance {
     pub color: [f32; 3],
-    pub position: [f32; 3],
     pub radius: f32,
 }
 
 impl ObjectInstance {
-    pub const fn layout() -> VertexBufferLayout<'static> {
+    pub const fn layout<const LOC_OFFSET: u32>() -> VertexBufferLayout<'static> {
         VertexBufferLayout {
             array_stride: std::mem::size_of::<ObjectInstance>() as u64,
             step_mode: wgpu::VertexStepMode::Instance,
@@ -65,41 +71,12 @@ impl ObjectInstance {
                 VertexAttribute {
                     format: wgpu::VertexFormat::Float32x3,
                     offset: 0,
-                    shader_location: 2,
-                },
-                VertexAttribute {
-                    format: wgpu::VertexFormat::Float32x3,
-                    offset: (std::mem::size_of::<f32>() * 3) as u64,
-                    shader_location: 3,
+                    shader_location: LOC_OFFSET,
                 },
                 VertexAttribute {
                     format: wgpu::VertexFormat::Float32,
-                    offset: (std::mem::size_of::<f32>() * 6) as u64,
-                    shader_location: 4,
-                },
-            ],
-        }
-    }
-
-    pub const fn layout_zero_offset() -> VertexBufferLayout<'static> {
-        VertexBufferLayout {
-            array_stride: std::mem::size_of::<ObjectInstance>() as u64,
-            step_mode: wgpu::VertexStepMode::Instance,
-            attributes: &[
-                VertexAttribute {
-                    format: wgpu::VertexFormat::Float32x3,
-                    offset: 0,
-                    shader_location: 0,
-                },
-                VertexAttribute {
-                    format: wgpu::VertexFormat::Float32x3,
                     offset: (std::mem::size_of::<f32>() * 3) as u64,
-                    shader_location: 1,
-                },
-                VertexAttribute {
-                    format: wgpu::VertexFormat::Float32,
-                    offset: (std::mem::size_of::<f32>() * 6) as u64,
-                    shader_location: 2,
+                    shader_location: LOC_OFFSET + 1,
                 },
             ],
         }
@@ -202,10 +179,6 @@ impl Objects {
         for obj in init {
             descriptions.push(ObjectInstance {
                 color: obj.color.into(),
-                position: {
-                    let x: [f64; 3] = obj.dat.pos.into();
-                    x.map(|f| f as f32)
-                },
                 radius: obj.radius,
             })
         }
@@ -220,15 +193,8 @@ impl Objects {
         self.vertices.flush_to_buffer(buffer, queue);
     }
 
-    pub fn flush_descriptions(&mut self, buffer: &Buffer, queue: &Queue) {
-        queue.write_buffer(buffer, 0, cast_slice(&mut self.descriptions));
-    }
-
     pub fn push_items(&mut self, batch: PointBatch) {
         self.vertices.push_items(&batch);
-        for (idx, pos) in batch.iter().enumerate() {
-            self.descriptions[idx].position = *pos;
-        }
     }
 
     pub fn get_index_range(&self) -> Range<u32> {
@@ -237,6 +203,16 @@ impl Objects {
             head..(head + self.vertices.tail as u32)
         } else {
             head..((TRAIL_MAX_LENGTH + self.vertices.tail) as u32)
+        }
+    }
+
+    pub fn get_last_batch_range(&self) -> Range<u64> {
+        if self.vertices.pending_tail < self.num_objects() {
+            ((TRAIL_MAX_LENGTH * self.num_objects() - self.num_objects()) as u64)
+                ..((TRAIL_MAX_LENGTH * self.num_objects()) as u64)
+        } else {
+            ((self.vertices.pending_tail - self.num_objects()) as u64)
+                ..(self.vertices.pending_tail as u64)
         }
     }
 
