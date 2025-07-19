@@ -1,5 +1,4 @@
 #![allow(clippy::too_many_arguments)]
-#![cfg_attr(target_arch = "spirv", no_std)]
 #![no_std]
 use spirv_std::glam::{Mat4, Vec2, Vec3, Vec4, Vec4Swizzles, vec4};
 use spirv_std::num_traits::Float;
@@ -41,7 +40,10 @@ pub fn line_vs(
         % constants.total_buffer_size;
 
     let floating_offset = index_offset as f32 / current_vertex_count as f32;
-    *out_pos = camera_uniform.view_proj * vec4(input_pos.x, input_pos.y, input_pos.z, 1.0);
+    // For some reason, doing the multiplication in two stages is much more stable
+    // when zoomed in.
+    let pos_view = camera_uniform.view * Vec4::from((input_pos, 1.0));
+    *out_pos = camera_uniform.projection * pos_view;
     *out_color = vec4(
         instance_color.x,
         instance_color.y,
@@ -90,12 +92,19 @@ pub fn circle_vs(
 
     let center_view = camera_uniform.view * Vec4::from((input_instance_pos, 1.0));
     let center_proj = camera_uniform.projection * center_view;
-    let pert_view = center_view + Vec4::new(1.0, 0.0, 0.0, 0.0) * input_instance_size;
-    let pert_proj = camera_uniform.projection * pert_view;
+    // There is certainly some clever math to avoid this, but I can't be bothered.
+    // Use the projection of another point offset from the target to get the size.
+    // (|P * (v + s) - P * v| = |P * s|)
 
-    let projected_size = (pert_proj - center_proj).xy().length();
+    // let pert_view = center_view + Vec4::new(input_instance_size, 0.0, 0.0, 0.0);
+    // let pert_proj = camera_uniform.projection * pert_view;
 
-    // real size / distance = projected size / near plane distance
+    // let projected_size = (pert_proj - center_proj).xy().length();
+
+    let projected_size = (camera_uniform.projection
+        * Vec4::new(input_instance_size, 0.0, 0.0, 1.0))
+    .xy()
+    .length();
 
     *out_pos = Vec4::from((
         center_proj.xy() + projected_size * raw_shifted,
@@ -108,14 +117,8 @@ pub fn circle_vs(
 }
 
 #[spirv(fragment)]
-pub fn circle_fs(
-    #[spirv(push_constant)] constants: &ShaderConstants,
-    in_color: Vec4,
-    in_uv: Vec2,
-
-    out_color: &mut Vec4,
-) {
+pub fn circle_fs(in_color: Vec4, in_uv: Vec2, out_color: &mut Vec4) {
     let radius = in_uv.length_squared();
     *out_color = in_color;
-    out_color.w = (1.0 - radius.powi(2)).clamp(0.0, 1.0);
+    out_color.w = (1.0 - Float::powi(radius, 2)).clamp(0.0, 1.0);
 }
