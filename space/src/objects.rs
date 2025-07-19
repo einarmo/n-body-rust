@@ -1,5 +1,6 @@
 use std::ops::Range;
 
+use bytemuck::cast_slice;
 use wgpu::{Buffer, Queue, VertexAttribute, VertexBufferLayout};
 
 use crate::Object;
@@ -48,7 +49,7 @@ pub struct ObjectVertexCache {
 }
 
 #[repr(C)]
-#[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+#[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct ObjectInstance {
     pub color: [f32; 3],
     pub position: [f32; 3],
@@ -75,6 +76,30 @@ impl ObjectInstance {
                     format: wgpu::VertexFormat::Float32,
                     offset: (std::mem::size_of::<f32>() * 6) as u64,
                     shader_location: 4,
+                },
+            ],
+        }
+    }
+
+    pub const fn layout_zero_offset() -> VertexBufferLayout<'static> {
+        VertexBufferLayout {
+            array_stride: std::mem::size_of::<ObjectInstance>() as u64,
+            step_mode: wgpu::VertexStepMode::Instance,
+            attributes: &[
+                VertexAttribute {
+                    format: wgpu::VertexFormat::Float32x3,
+                    offset: 0,
+                    shader_location: 0,
+                },
+                VertexAttribute {
+                    format: wgpu::VertexFormat::Float32x3,
+                    offset: (std::mem::size_of::<f32>() * 3) as u64,
+                    shader_location: 1,
+                },
+                VertexAttribute {
+                    format: wgpu::VertexFormat::Float32,
+                    offset: (std::mem::size_of::<f32>() * 6) as u64,
+                    shader_location: 2,
                 },
             ],
         }
@@ -193,6 +218,10 @@ impl Objects {
 
     pub fn flush_to_buffer(&mut self, buffer: &Buffer, queue: &Queue) {
         self.vertices.flush_to_buffer(buffer, queue);
+    }
+
+    pub fn flush_descriptions(&mut self, buffer: &Buffer, queue: &Queue) {
+        queue.write_buffer(buffer, 0, cast_slice(&mut self.descriptions));
     }
 
     pub fn push_items(&mut self, batch: PointBatch) {

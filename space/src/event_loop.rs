@@ -1,8 +1,9 @@
 use std::sync::{
-    atomic::{AtomicBool, Ordering},
     Arc,
+    atomic::{AtomicBool, Ordering},
 };
 
+use cgmath::{InnerSpace, Vector3, Vector4};
 use pollster::FutureExt;
 use winit::{
     application::ApplicationHandler,
@@ -17,8 +18,8 @@ use crate::{
     camera::Camera,
     objects::Objects,
     render::Renderer,
-    sim::{compute_elapsed_time, ObjectBuffer},
-    surface::{get_surface, get_window, WindowState},
+    sim::{ObjectBuffer, compute_elapsed_time},
+    surface::{WindowState, get_surface, get_window},
 };
 
 #[derive(Debug, Default, Clone)]
@@ -226,6 +227,37 @@ impl ApplicationHandler<()> for SpaceApp {
                 inner
                     .renderer
                     .redraw(self.tick, &mut inner.camera, &mut self.objects);
+
+                /* let earth = &self.objects.descriptions_mut()[1];
+                let earth_pos =
+                    Vector4::from((earth.position[0], earth.position[1], earth.position[2], 1.0));
+                let earth_view = inner.camera.view() * earth_pos;
+                let earth_proj = inner.camera.projection() * earth_view;
+                println!("Earth view: {:?}", earth_view);
+                println!("Earth proj {:?}", inner.camera.matrix() * earth_pos);
+                println!(
+                    "Earth distance from camera: {}",
+                    earth_view.truncate().magnitude()
+                );
+                println!(
+                    "Earth radius over distance: {}",
+                    earth.radius / earth_view.truncate().magnitude()
+                );
+                // Add a point radius away from the target position, then apply the projection matrix.
+                let pert_point = earth_view
+                    + (earth_view
+                        .truncate()
+                        .cross(Vector3::new(1.0, 0.0, 0.0))
+                        .normalize()
+                        * earth.radius)
+                        .extend(0.0);
+                let pert_proj = inner.camera.projection() * pert_point;
+                println!("Perturbed point: {:?}", pert_proj);
+                println!(
+                    "Distance to perturbed point: {}",
+                    (pert_proj - earth_proj).truncate().magnitude()
+                ); */
+
                 //
                 // let _last_draw = *next_tick_ref;
                 // *next_tick_ref = Instant::now();

@@ -1,6 +1,6 @@
 use std::mem::size_of;
 
-use cgmath::{InnerSpace, Rad, SquareMatrix, Vector3, Zero};
+use cgmath::{InnerSpace, Matrix4, Rad, SquareMatrix, Vector3, Zero};
 use wgpu::{
     BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindGroupLayoutDescriptor,
     BindGroupLayoutEntry, Buffer, BufferDescriptor, BufferUsages, Device, Queue,
@@ -16,7 +16,9 @@ pub struct Camera {
     pub aspect: f32,
     pub fovy: f32,
     focus: Option<i64>,
-    matrix: cgmath::Matrix4<f32>,
+    view_proj: cgmath::Matrix4<f32>,
+    view: cgmath::Matrix4<f32>,
+    projection: cgmath::Matrix4<f32>,
     changed: bool,
     camera_buffer: Buffer,
 }
@@ -25,6 +27,8 @@ pub struct Camera {
 #[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 struct CameraUniform {
     view_proj: [[f32; 4]; 4],
+    view: [[f32; 4]; 4],
+    projection: [[f32; 4]; 4],
 }
 
 impl Camera {
@@ -44,14 +48,16 @@ impl Camera {
             fovy: 45.0,
             focus: None,
             changed: true,
-            matrix: cgmath::Matrix4::from_diagonal((1.0, 1.0, 1.0, 1.0).into()),
+            view_proj: cgmath::Matrix4::from_diagonal((1.0, 1.0, 1.0, 1.0).into()),
+            view: cgmath::Matrix4::from_diagonal((1.0, 1.0, 1.0, 1.0).into()),
+            projection: cgmath::Matrix4::from_diagonal((1.0, 1.0, 1.0, 1.0).into()),
             camera_buffer,
         }
     }
 
     pub fn flush_if_needed(&mut self, queue: &Queue) {
         if self.changed {
-            self.matrix = self.build_view_projection_matrix();
+            self.build_view_projection_matrix();
         } else {
             return;
         }
@@ -61,32 +67,35 @@ impl Camera {
         queue.write_buffer(
             &self.camera_buffer,
             0,
-            bytemuck::cast_slice(&self.get_uniform_buffer().view_proj),
+            bytemuck::cast_slice(&[self.get_uniform_buffer()]),
         );
     }
 
     fn get_uniform_buffer(&self) -> CameraUniform {
         CameraUniform {
-            view_proj: self.matrix.into(),
+            view_proj: self.view_proj.into(),
+            view: self.view.into(),
+            projection: self.projection.into(),
         }
     }
 
-    fn build_view_projection_matrix(&self) -> cgmath::Matrix4<f32> {
-        let view = cgmath::Matrix4::look_at_rh(self.eye, self.target, self.up);
+    fn build_view_projection_matrix(&mut self) {
+        self.view = cgmath::Matrix4::look_at_rh(self.eye, self.target, self.up);
         // let proj = cgmath::perspective(cgmath::Deg(self.fovy), self.aspect, self.znear, self.zfar);
 
         let e = 1.0 / ((self.fovy / 2.0).tan());
         let a = self.aspect;
-        let epsilon = 1e-20;
+        let epsilon = 3e-7;
         #[rustfmt::skip]
         let mut inf_proj = cgmath::Matrix4::new(
             e, 0.0, 0.0, 0.0,
             0.0, e * a, 0.0, 0.0,
-            0.0, 0.0, epsilon-1.0, (epsilon - 2.0) * 0.0,
+            0.0, 0.0, epsilon-1.0, (epsilon - 2.0) * 1e-10,
             0.0, 0.0, -1.0, 0.0);
         inf_proj.transpose_self();
 
-        inf_proj * view
+        self.projection = inf_proj;
+        self.view_proj = self.projection * self.view;
     }
 
     pub fn resize(&mut self, size: PhysicalSize<u32>) {
@@ -254,5 +263,17 @@ impl Camera {
         }
 
         self.changed = true;
+    }
+
+    pub fn matrix(&self) -> Matrix4<f32> {
+        self.view_proj
+    }
+
+    pub fn view(&self) -> Matrix4<f32> {
+        self.view
+    }
+
+    pub fn projection(&self) -> Matrix4<f32> {
+        self.projection
     }
 }

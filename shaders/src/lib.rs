@@ -1,9 +1,17 @@
 #![allow(clippy::too_many_arguments)]
 #![cfg_attr(target_arch = "spirv", no_std)]
-#![deny(warnings)]
-
-use spirv_std::glam::{Vec3, Vec4, Vec4Swizzles, vec4};
+#![no_std]
+use spirv_std::glam::{Mat4, Vec2, Vec3, Vec4, Vec4Swizzles, vec4};
+use spirv_std::num_traits::Float;
 use spirv_std::spirv;
+
+#[repr(C)]
+pub struct CameraUniform {
+    pub view_proj: Mat4,
+    pub view: Mat4,
+    pub projection: Mat4,
+}
+
 #[repr(C)]
 pub struct ShaderConstants {
     pub width: u32,
@@ -22,7 +30,7 @@ pub fn line_vs(
     instance_color: Vec3,
     _instance_pos: Vec3,
     _instance_size: f32,
-    #[spirv(uniform, descriptor_set = 0, binding = 0)] camera_uniform: &spirv_std::glam::Mat4,
+    #[spirv(uniform, descriptor_set = 0, binding = 0)] camera_uniform: &CameraUniform,
     #[spirv(position, invariant)] out_pos: &mut Vec4,
     out_color: &mut Vec4,
 ) {
@@ -34,7 +42,7 @@ pub fn line_vs(
         % constants.total_buffer_size;
 
     let floating_offset = index_offset as f32 / current_vertex_count as f32;
-    *out_pos = *camera_uniform * vec4(input_pos.x, input_pos.y, input_pos.z, 1.0);
+    *out_pos = camera_uniform.view_proj * vec4(input_pos.x, input_pos.y, input_pos.z, 1.0);
     *out_color = vec4(
         instance_color.x,
         instance_color.y,
@@ -51,4 +59,62 @@ pub fn line_fs(
 ) {
     //*output = Vec4::new(1.0, 1.0, 1.0, 1.0);
     *output = in_color.xyz().extend(in_color.w);
+}
+
+const CLIP_SPACE_COORD_QUAD_CCW: [Vec2; 6] = {
+    let tl = Vec2::new(-1.0, 1.0);
+    let tr = Vec2::new(1.0, 1.0);
+    let bl = Vec2::new(-1.0, -1.0);
+    let br = Vec2::new(1.0, -1.0);
+    [bl, br, tr, tr, tl, bl]
+};
+
+#[spirv(vertex)]
+pub fn circle_vs(
+    #[spirv(push_constant)] constants: &ShaderConstants,
+    #[spirv(vertex_index)] vertex_id: u32,
+    input_instance_color: Vec3,
+    input_instance_pos: Vec3,
+    input_instance_size: f32,
+    #[spirv(uniform, descriptor_set = 0, binding = 0)] camera_uniform: &CameraUniform,
+    #[spirv(position)] out_pos: &mut Vec4,
+    out_color: &mut Vec4,
+    out_uv: &mut Vec2,
+) {
+    let index = vertex_id as usize % 6;
+    let raw = CLIP_SPACE_COORD_QUAD_CCW[index];
+    let raw_shifted = Vec2::new(
+        raw.x / (constants.width as f32 / constants.height as f32),
+        raw.y,
+    );
+
+    let center_view = camera_uniform.view * Vec4::from((input_instance_pos, 1.0));
+    let center_proj = camera_uniform.projection * center_view;
+    let pert_view = center_view + Vec4::new(1.0, 0.0, 0.0, 0.0) * input_instance_size;
+    let pert_proj = camera_uniform.projection * pert_view;
+
+    let projected_size = (pert_proj - center_proj).xy().length().max(0.01);
+
+    // real size / distance = projected size / near plane distance
+
+    *out_pos = Vec4::from((
+        center_proj.xy() + projected_size * raw_shifted,
+        center_proj.z,
+        center_proj.w,
+    ));
+    *out_color = Vec4::from((input_instance_color, 1.0));
+    *out_uv = raw;
+}
+
+#[spirv(fragment)]
+pub fn circle_fs(
+    #[spirv(push_constant)] constants: &ShaderConstants,
+    in_color: Vec4,
+    in_uv: Vec2,
+
+    out_color: &mut Vec4,
+) {
+    let radius = in_uv.length_squared();
+    *out_color = in_color;
+    out_color.w = (1.0 - radius.powi(2)).clamp(0.0, 1.0);
 }

@@ -17,6 +17,7 @@ use crate::{
 
 mod batch_request;
 mod camera;
+mod circle_pipeline;
 mod event_loop;
 mod objects;
 mod parameters;
@@ -77,7 +78,7 @@ fn earth_sun_parameter() -> Vec<Object> {
                 vel: [0.0, 0.0, 0.0],
             }),
             mass: 333000.0,
-            radius: 696340e3,
+            radius: (696340e3 / AU) as f32,
             color: (1.0, 1.0, 0.0).into(),
         },
         StandardParams {
@@ -96,7 +97,7 @@ fn earth_sun_parameter() -> Vec<Object> {
                 vel: [0.0, 0.0, 0.0],
             }), */
             mass: 1.0,
-            radius: 6371e3,
+            radius: (6371e3 / AU) as f32,
             color: (0.0, 0.0, 1.0).into(),
         },
         StandardParams {
@@ -111,7 +112,7 @@ fn earth_sun_parameter() -> Vec<Object> {
                 true_an: 6.454243862420770E+01,
             }),
             mass: 7.349e22 / M0,
-            radius: 1737e3,
+            radius: (1737e3 / AU) as f32,
             color: (1.0, 1.0, 1.0).into(),
         },
         // Give the moon a tiny satelite
@@ -127,8 +128,8 @@ fn earth_sun_parameter() -> Vec<Object> {
                 true_an: 0.0,
             }),
             // Make it fucking huge
-            mass: 7.349e22 / M0,      // 1000kg
-            radius: 10.0 / AU as f32, // 10m
+            mass: 7.349e22 / M0,        // 1000kg
+            radius: (10.0 / AU) as f32, // 10m
             color: (0.5, 0.5, 0.5).into(),
         },
     ])

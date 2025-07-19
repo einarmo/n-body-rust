@@ -1,18 +1,31 @@
+use std::sync::OnceLock;
+
 use bytemuck::cast_slice;
+use cgmath::Vector4;
 use wgpu::{
+    BindGroup, Buffer, BufferDescriptor, BufferUsages, CommandEncoder, Device,
+    RenderPassDescriptor, ShaderModule, TextureView,
     util::{BufferInitDescriptor, DeviceExt},
-    BindGroup, Buffer, BufferDescriptor, BufferUsages, CommandEncoder, RenderPassDescriptor,
-    TextureView,
 };
 use winit::{dpi::PhysicalSize, window::Window};
 
 use crate::{
+    ShaderConstants,
     camera::Camera,
-    objects::{Objects, OBJECT_STRIDE, TRAIL_MAX_LENGTH},
+    circle_pipeline::CircleDrawPipeline,
+    objects::{OBJECT_STRIDE, Objects, TRAIL_MAX_LENGTH},
     pipeline::LineDrawPipeline,
     surface::SurfaceState,
-    ShaderConstants,
 };
+
+pub static SHADER: OnceLock<ShaderModule> = OnceLock::new();
+
+pub fn get_or_init_shader(device: &Device) -> &ShaderModule {
+    SHADER.get_or_init(|| {
+        let shader = wgpu::include_spirv_raw!(env!("shaders.spv"));
+        unsafe { device.create_shader_module_passthrough(shader) }
+    })
+}
 
 pub struct Renderer {
     surface: SurfaceState,
@@ -21,6 +34,7 @@ pub struct Renderer {
     instance_buffer: Buffer,
     camera_bind_group: BindGroup,
     line_pipeline: LineDrawPipeline,
+    circle_pipeline: CircleDrawPipeline,
 }
 
 impl Renderer {
@@ -33,7 +47,7 @@ impl Renderer {
         let instance_buffer = surface.device.create_buffer_init(&BufferInitDescriptor {
             label: Some("instance buffer"),
             contents: cast_slice(objects.descriptions_mut()),
-            usage: BufferUsages::VERTEX,
+            usage: BufferUsages::VERTEX | BufferUsages::COPY_DST,
         });
         let num_objects = objects.num_objects();
 
@@ -51,6 +65,8 @@ impl Renderer {
             mapped_at_creation: false,
         });
 
+        let circle_pipeline = CircleDrawPipeline::new(&surface, &camera_layout);
+
         Self {
             surface,
             window_size: window.inner_size(),
@@ -58,6 +74,7 @@ impl Renderer {
             camera_bind_group,
             point_buffer,
             line_pipeline,
+            circle_pipeline,
         }
     }
 
@@ -84,7 +101,15 @@ impl Renderer {
             }
         };
         objects.flush_to_buffer(&self.point_buffer, &self.surface.queue);
+        objects.flush_descriptions(&self.instance_buffer, &self.surface.queue);
         camera.flush_if_needed(&self.surface.queue);
+
+        /* let epos = objects.descriptions_mut()[1].position;
+        let radius = objects.descriptions_mut()[1].radius;
+        let proj_epos = camera.matrix() * Vector4::from((epos[0], epos[1], epos[2], 1.0));
+
+        println!("{:?}", proj_epos);
+        println!("{}", radius / proj_epos.z); */
 
         let mut output_view = output
             .texture
@@ -152,6 +177,14 @@ impl Renderer {
             &self.instance_buffer,
             &push_constants,
             index_range,
+            objects.num_objects(),
+        );
+
+        self.circle_pipeline.draw(
+            &mut rpass,
+            &self.camera_bind_group,
+            &self.instance_buffer,
+            &push_constants,
             objects.num_objects(),
         );
     }
