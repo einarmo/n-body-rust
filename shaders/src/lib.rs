@@ -12,7 +12,7 @@ pub struct CameraUniform {
     pub projection: Mat4,
 }
 
-#[repr(C)]
+#[repr(C, packed)]
 pub struct ShaderConstants {
     pub width: u32,
     pub height: u32,
@@ -20,6 +20,8 @@ pub struct ShaderConstants {
     pub total_buffer_size: u32,
     pub start_index: u32,
     pub end_index: u32,
+    pub use_relative_position: u32,
+    pub last_relative_position: Vec3,
 }
 
 #[spirv(vertex)]
@@ -29,6 +31,8 @@ pub fn line_vs(
     input_idx: u32,
     instance_color: Vec3,
     _instance_size: f32,
+    rel_input_pos: Vec3,
+    _rel_input_idx: u32,
     #[spirv(uniform, descriptor_set = 0, binding = 0)] camera_uniform: &CameraUniform,
     #[spirv(position, invariant)] out_pos: &mut Vec4,
     out_color: &mut Vec4,
@@ -43,7 +47,12 @@ pub fn line_vs(
     let floating_offset = index_offset as f32 / current_vertex_count as f32;
     // For some reason, doing the multiplication in two stages is much more stable
     // when zoomed in.
-    let pos_view = camera_uniform.view * Vec4::from((input_pos, 1.0));
+    let pos = if constants.use_relative_position != 0 {
+        input_pos - rel_input_pos
+    } else {
+        input_pos
+    };
+    let pos_view = camera_uniform.view * Vec4::from((pos, 1.0));
     *out_pos = camera_uniform.projection * pos_view;
     *out_color = vec4(
         instance_color.x,
@@ -91,7 +100,13 @@ pub fn circle_vs(
         raw.y,
     );
 
-    let center_view = camera_uniform.view * Vec4::from((input_instance_pos, 1.0));
+    let pos = if constants.use_relative_position != 0 {
+        input_instance_pos - constants.last_relative_position
+    } else {
+        input_instance_pos
+    };
+
+    let center_view = camera_uniform.view * Vec4::from((pos, 1.0));
     let center_proj = camera_uniform.projection * center_view;
     // There is certainly some clever math to avoid this, but I can't be bothered.
     // Use the projection of another point offset from the target to get the size.

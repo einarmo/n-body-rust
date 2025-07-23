@@ -37,7 +37,7 @@ impl CircleDrawPipeline {
             vertex: wgpu::VertexState {
                 module: shader_module,
                 entry_point: Some("circle_vs"),
-                buffers: &[Vertex::layout::<false>(), ObjectInstance::layout::<2>()],
+                buffers: &[Vertex::layout::<false, 0>(), ObjectInstance::layout::<2>()],
                 compilation_options: Default::default(),
             },
             cache: None,
@@ -93,7 +93,7 @@ impl CircleDrawPipeline {
             (last_batch_range.start * Vertex::size())..(last_batch_range.end * Vertex::size());
 
         rpass.set_pipeline(&self.pipeline);
-        rpass.set_vertex_buffer(0, point_buffer.slice(last_batch_range));
+        rpass.set_vertex_buffer(0, point_buffer.slice(last_batch_range.clone()));
         rpass.set_vertex_buffer(1, instance_buffer.slice(..));
 
         rpass.set_bind_group(0, camera, &[]);

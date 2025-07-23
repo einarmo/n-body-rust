@@ -38,7 +38,7 @@ impl SpaceEguiApp {
         );
         let renderer = Renderer::new(
             &wgpu_render_state.device,
-            TextureFormat::Bgra8UnormSrgb,
+            TextureFormat::Bgra8Unorm,
             PhysicalSize {
                 width: initial_size.x as u32,
                 height: initial_size.y as u32,
@@ -83,8 +83,6 @@ impl eframe::App for SpaceEguiApp {
             let state = frame.wgpu_render_state().unwrap();
             self.texture.resize(&state.device, psize, &state);
 
-            self.exchange.sample(&mut self.objects);
-
             ui.input(|i| {
                 for evt in &i.events {
                     match evt {
@@ -105,6 +103,7 @@ impl eframe::App for SpaceEguiApp {
                             Key::F => self.keyboard_state.f.event(*pressed),
                             Key::G => self.keyboard_state.g.event(*pressed),
                             Key::H => self.keyboard_state.h.event(*pressed),
+                            Key::J => self.keyboard_state.j.event(*pressed),
                             _ => (),
                         },
                         _ => (),
@@ -112,14 +111,16 @@ impl eframe::App for SpaceEguiApp {
                 }
             });
 
-            self.camera.move_relative(&self.keyboard_state);
-            self.camera.zoom(&self.keyboard_state);
-            self.camera
-                .set_focus(&mut self.keyboard_state, &self.objects);
-            self.camera.rot(&self.keyboard_state);
             if self.keyboard_state.space.get_trigger() {
                 self.objects.clear();
             }
+            self.exchange.sample(&mut self.objects);
+
+            self.camera.move_relative(&self.keyboard_state);
+            self.camera.zoom(&self.keyboard_state);
+            self.camera
+                .set_focus(&mut self.keyboard_state, &mut self.objects);
+            self.camera.rot(&self.keyboard_state);
 
             self.renderer.redraw(
                 self.tick,
@@ -158,7 +159,7 @@ impl IntermediateTexture {
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::Bgra8UnormSrgb,
+            format: wgpu::TextureFormat::Bgra8Unorm,
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
             view_formats: &[],
         });
@@ -185,7 +186,7 @@ impl IntermediateTexture {
                 mip_level_count: 1,
                 sample_count: 1,
                 dimension: wgpu::TextureDimension::D2,
-                format: wgpu::TextureFormat::Bgra8UnormSrgb,
+                format: wgpu::TextureFormat::Bgra8Unorm,
                 usage: wgpu::TextureUsages::RENDER_ATTACHMENT
                     | wgpu::TextureUsages::TEXTURE_BINDING,
                 view_formats: &[],

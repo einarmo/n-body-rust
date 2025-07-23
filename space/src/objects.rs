@@ -18,7 +18,8 @@ pub struct Vertex {
 }
 
 impl Vertex {
-    pub const fn layout<const VERTEX: bool>() -> VertexBufferLayout<'static> {
+    pub const fn layout<const VERTEX: bool, const LOC_OFFSET: u32>() -> VertexBufferLayout<'static>
+    {
         VertexBufferLayout {
             array_stride: std::mem::size_of::<Vertex>() as u64,
             step_mode: if VERTEX {
@@ -30,12 +31,12 @@ impl Vertex {
                 VertexAttribute {
                     format: wgpu::VertexFormat::Float32x3,
                     offset: 0,
-                    shader_location: 0,
+                    shader_location: LOC_OFFSET,
                 },
                 VertexAttribute {
                     format: wgpu::VertexFormat::Uint32,
                     offset: 3 * std::mem::size_of::<f32>() as u64,
-                    shader_location: 1,
+                    shader_location: LOC_OFFSET + 1,
                 },
             ],
         }
@@ -154,7 +155,7 @@ impl ObjectVertexCache {
     pub fn position_of(&self, idx: usize) -> &[f32; 3] {
         let mut vertex_idx_raw = idx as i64 - self.num_objects as i64 + self.pending_tail as i64;
         if vertex_idx_raw < 0 {
-            vertex_idx_raw = TRAIL_MAX_LENGTH as i64 * self.num_objects as i64 - vertex_idx_raw;
+            vertex_idx_raw = TRAIL_MAX_LENGTH as i64 * self.num_objects as i64 + vertex_idx_raw;
         }
         &self.buff[vertex_idx_raw as usize].pos
     }
@@ -170,6 +171,7 @@ impl ObjectVertexCache {
 pub struct Objects {
     vertices: ObjectVertexCache,
     descriptions: Vec<ObjectInstance>,
+    target_object: Option<usize>,
 }
 
 impl Objects {
@@ -186,6 +188,7 @@ impl Objects {
         Self {
             vertices: ObjectVertexCache::new(num_objects),
             descriptions,
+            target_object: None,
         }
     }
 
@@ -195,6 +198,14 @@ impl Objects {
 
     pub fn push_items(&mut self, batch: PointBatch) {
         self.vertices.push_items(&batch);
+    }
+
+    pub fn set_target_object(&mut self, idx: Option<usize>) {
+        self.target_object = idx;
+    }
+
+    pub fn target_object(&self) -> Option<usize> {
+        self.target_object
     }
 
     pub fn get_index_range(&self) -> Range<u32> {

@@ -65,6 +65,7 @@ pub struct KeyboardState {
     pub g: KeyTrigger,
     pub h: KeyTrigger,
     pub space: KeyTrigger,
+    pub j: KeyTrigger,
 }
 
 impl KeyboardState {
@@ -197,6 +198,7 @@ impl ApplicationHandler<()> for SpaceApp {
                         "f" => self.keyboard_state.f.event(is_pressed),
                         "g" => self.keyboard_state.g.event(is_pressed),
                         "h" => self.keyboard_state.h.event(is_pressed),
+                        "j" => self.keyboard_state.j.event(is_pressed),
                         _ => (),
                     },
                     winit::keyboard::Key::Unidentified(_) => (),
@@ -226,7 +228,7 @@ impl ApplicationHandler<()> for SpaceApp {
                 inner.camera.zoom(&self.keyboard_state);
                 inner
                     .camera
-                    .set_focus(&mut self.keyboard_state, &self.objects);
+                    .set_focus(&mut self.keyboard_state, &mut self.objects);
                 inner.camera.rot(&self.keyboard_state);
                 if self.keyboard_state.space.get_trigger() {
                     self.objects.clear();

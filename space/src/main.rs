@@ -31,7 +31,7 @@ mod surface;
 mod ui;
 
 #[derive(Copy, Clone, Pod, Zeroable)]
-#[repr(C)]
+#[repr(C, packed)]
 struct ShaderConstants {
     pub width: u32,
     pub height: u32,
@@ -39,6 +39,8 @@ struct ShaderConstants {
     pub total_buffer_size: u32,
     pub start_index: u32,
     pub end_index: u32,
+    pub use_relative_position: u32,
+    pub last_relative_position: [f32; 3],
 }
 
 #[derive(Debug)]
@@ -135,6 +137,21 @@ fn earth_sun_parameter() -> Vec<Object> {
             mass: 7.349e22 / M0,        // 1000kg
             radius: (10.0 / AU) as f32, // 10m
             color: (0.5, 0.5, 0.5).into(),
+        },
+        StandardParams {
+            name: Some("mars".to_owned()),
+            coordinates: RelativeOrAbsolute::Relative(RelativeCoords {
+                parent: "sun".to_owned(),
+                semi_major_axis: 227956E+6,
+                eccentricity: 0.0935,
+                inclination: 1.848,
+                arg_periapsis: 286.5,
+                long_asc_node: 49.578,
+                true_an: 0.0, // TOOD
+            }),
+            mass: 0.107,
+            radius: (3396.2e3 / AU) as f32,
+            color: (1.0, 0.0, 0.0).into(),
         },
     ])
     .into_iter()

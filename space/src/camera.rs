@@ -162,7 +162,7 @@ impl Camera {
         self.changed = true;
     }
 
-    pub fn set_focus(&mut self, keys: &mut KeyboardState, objects: &Objects) {
+    pub fn set_focus(&mut self, keys: &mut KeyboardState, objects: &mut Objects) {
         if keys.f.get_trigger() {
             self.focus =
                 Some((self.focus.unwrap_or(1) - 1).rem_euclid(objects.num_objects() as i64));
@@ -174,13 +174,27 @@ impl Camera {
         if keys.h.get_trigger() {
             self.focus = None;
         }
+        if keys.j.get_trigger() {
+            if objects.target_object().is_some() {
+                objects.set_target_object(None);
+            } else {
+                objects.set_target_object(self.focus.map(|f| f as usize));
+            }
+        }
 
         if let Some(focus) = &self.focus {
             let pos = objects.position_of(*focus as usize);
             let rel = self.eye - self.target;
-            self.target.x = pos[0];
-            self.target.y = pos[1];
-            self.target.z = pos[2];
+            if let Some(relative) = objects.target_object() {
+                let rel_pos = objects.position_of(relative);
+                self.target.x = pos[0] - rel_pos[0];
+                self.target.y = pos[1] - rel_pos[1];
+                self.target.z = pos[2] - rel_pos[2];
+            } else {
+                self.target.x = pos[0];
+                self.target.y = pos[1];
+                self.target.z = pos[2];
+            }
             self.eye = self.target + rel;
             self.changed = true;
         }

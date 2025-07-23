@@ -54,7 +54,11 @@ impl LineDrawPipeline {
             vertex: wgpu::VertexState {
                 module: shader_module,
                 entry_point: Some("line_vs"),
-                buffers: &[Vertex::layout::<true>(), ObjectInstance::layout::<2>()],
+                buffers: &[
+                    Vertex::layout::<true, 0>(),
+                    ObjectInstance::layout::<2>(),
+                    Vertex::layout::<true, 4>(),
+                ],
                 compilation_options: PipelineCompilationOptions::default(),
             },
             cache: None,
@@ -108,10 +112,19 @@ impl LineDrawPipeline {
         push_constants: &ShaderConstants,
         index_range: Range<u32>,
         num_objects: usize,
+        target_object: Option<usize>,
     ) {
         rpass.set_pipeline(&self.pipeline);
         rpass.set_vertex_buffer(0, buffer.slice(..));
         rpass.set_vertex_buffer(1, instance_buffer.slice(..));
+        if let Some(target) = target_object {
+            rpass.set_vertex_buffer(
+                2,
+                buffer.slice(((target * std::mem::size_of::<Vertex>()) as u64)..),
+            );
+        } else {
+            rpass.set_vertex_buffer(2, buffer.slice(..));
+        }
         rpass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
 
         rpass.set_bind_group(0, camera, &[]);
@@ -122,9 +135,23 @@ impl LineDrawPipeline {
             bytemuck::bytes_of(push_constants),
         );
 
-        for idx in 0..num_objects {
-            let idxu = idx as u32;
-            rpass.draw_indexed(index_range.clone(), idx as i32, idxu..(idxu + 1));
+        if target_object.is_some() {
+            // re-bind the vertex buffer for each object, since we can't use base_vertex.
+            for idx in 0..num_objects {
+                let idxu = idx as u32;
+                rpass.set_vertex_buffer(
+                    0,
+                    buffer.slice(((idx * std::mem::size_of::<Vertex>()) as u64)..),
+                );
+
+                rpass.draw_indexed(index_range.clone(), 0, idxu..(idxu + 1));
+            }
+        } else {
+            for idx in 0..num_objects {
+                let idxu = idx as u32;
+
+                rpass.draw_indexed(index_range.clone(), idx as i32, idxu..(idxu + 1));
+            }
         }
     }
 }

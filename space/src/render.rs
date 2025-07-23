@@ -141,6 +141,16 @@ impl Renderer {
             total_buffer_size: TRAIL_MAX_LENGTH as u32,
             start_index: index_range.start,
             end_index: index_range.end,
+            use_relative_position: if objects.target_object().is_some() {
+                1
+            } else {
+                0
+            },
+            last_relative_position: if let Some(target) = objects.target_object() {
+                *objects.position_of(target)
+            } else {
+                [0.0, 0.0, 0.0]
+            },
         };
 
         self.line_pipeline.draw(
@@ -151,6 +161,7 @@ impl Renderer {
             &push_constants,
             index_range,
             objects.num_objects(),
+            objects.target_object(),
         );
 
         self.circle_pipeline.draw(
