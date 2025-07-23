@@ -1,8 +1,9 @@
 #![allow(clippy::too_many_arguments)]
 #![no_std]
 use spirv_std::glam::{Mat4, Vec2, Vec3, Vec4, Vec4Swizzles, vec4};
+use spirv_std::image::Image2d;
 use spirv_std::num_traits::Float;
-use spirv_std::spirv;
+use spirv_std::{Sampler, spirv};
 
 #[repr(C)]
 pub struct CameraUniform {
@@ -121,4 +122,26 @@ pub fn circle_fs(in_color: Vec4, in_uv: Vec2, out_color: &mut Vec4) {
     let radius = in_uv.length_squared();
     *out_color = in_color;
     out_color.w = (1.0 - Float::powi(radius, 2)).clamp(0.0, 1.0);
+}
+
+#[spirv(vertex)]
+pub fn copy_texture_vs(
+    #[spirv(vertex_index)] vertex_id: u32,
+    #[spirv(position)] out_pos: &mut Vec4,
+    out_uv: &mut Vec2,
+) {
+    let index = vertex_id as usize % 6;
+    let raw = CLIP_SPACE_COORD_QUAD_CCW[index];
+    *out_pos = Vec4::new(raw.x, raw.y, 0.0, 1.0);
+    *out_uv = (raw + Vec2::splat(1.0)) / 2.0;
+}
+
+#[spirv(fragment)]
+pub fn copy_texture_fs(
+    in_uv: Vec2,
+    #[spirv(descriptor_set = 0, binding = 0)] image: &Image2d,
+    #[spirv(descriptor_set = 0, binding = 1)] sampler: &Sampler,
+    out_color: &mut Vec4,
+) {
+    *out_color = image.sample(*sampler, in_uv);
 }

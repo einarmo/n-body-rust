@@ -18,7 +18,7 @@ use crate::{
     objects::Objects,
     render::Renderer,
     sim::{ObjectBuffer, compute_elapsed_time},
-    surface::{WindowState, get_surface, get_window},
+    surface::{SurfaceState, WindowState, get_surface, get_window},
 };
 
 #[derive(Debug, Default, Clone)]
@@ -108,6 +108,7 @@ struct SpaceAppInner {
     window: WindowState,
     renderer: Renderer,
     camera: Camera,
+    surface: SurfaceState,
 }
 
 impl SpaceAppInner {
@@ -119,9 +120,16 @@ impl SpaceAppInner {
         let window = get_window(event_loop, size.width, size.height)?;
         let surface = get_surface(window.window.clone()).block_on()?;
         let camera = Camera::new(window.window.inner_size(), &surface.device);
-        let renderer = Renderer::new(surface, &window.window, &camera, objects);
+        let renderer = Renderer::new(
+            &surface.device,
+            surface.texture_format(),
+            window.window.inner_size(),
+            &camera,
+            objects,
+        );
 
         Ok(Self {
+            surface,
             window,
             renderer,
             camera,
@@ -162,6 +170,7 @@ impl ApplicationHandler<()> for SpaceApp {
 
         match event {
             WindowEvent::Resized(size) => {
+                inner.surface.resize(size);
                 inner.renderer.resize(size);
                 inner.camera.resize(size);
             }
@@ -223,9 +232,19 @@ impl ApplicationHandler<()> for SpaceApp {
                     self.objects.clear();
                 }
 
-                inner
-                    .renderer
-                    .redraw(self.tick, &mut inner.camera, &mut self.objects);
+                if let Some(texture) = inner.surface.get_current_texture() {
+                    inner.renderer.redraw(
+                        self.tick,
+                        &mut inner.camera,
+                        &mut self.objects,
+                        &inner.surface.queue,
+                        &texture.texture,
+                        &inner.surface.device,
+                    );
+                    texture.present();
+                } else {
+                    println!("Failed to get current texture");
+                }
 
                 /* use cgmath::{InnerSpace, Vector3, Vector4};
                 let earth = &self.objects.descriptions_mut()[1];

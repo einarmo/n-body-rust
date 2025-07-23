@@ -2,6 +2,8 @@ use std::sync::{Arc, atomic::AtomicBool};
 
 use bytemuck::{Pod, Zeroable};
 use cgmath::Vector3;
+use eframe::egui;
+use egui_wgpu::{WgpuConfiguration, WgpuSetupCreateNew};
 use parameters::{
     AbsoluteCoords, RelativeCoords, RelativeOrAbsolute, StandardParams, convert_params,
 };
@@ -13,6 +15,7 @@ use crate::{
     event_loop::{SpaceApp, run_sim_loop},
     objects::Objects,
     sim::{AU, ObjectBuffer, ObjectInfo},
+    ui::SpaceEguiApp,
 };
 
 mod batch_request;
@@ -25,6 +28,7 @@ mod pipeline;
 mod render;
 mod sim;
 mod surface;
+mod ui;
 
 #[derive(Copy, Clone, Pod, Zeroable)]
 #[repr(C)]
@@ -138,6 +142,52 @@ fn earth_sun_parameter() -> Vec<Object> {
     .collect()
 }
 
+fn graphics_direct(batch: Arc<BatchRequest>, objects: Objects) -> anyhow::Result<()> {
+    let mut app = SpaceApp::new(1280.0, 640.0, objects, batch);
+
+    let event_loop = EventLoop::new()?;
+    event_loop.set_control_flow(ControlFlow::Poll);
+
+    event_loop.run_app(&mut app)?;
+
+    Ok(())
+}
+
+fn graphics_egui(batch: Arc<BatchRequest>, objects: Objects) -> anyhow::Result<()> {
+    let options = eframe::NativeOptions {
+        viewport: egui::ViewportBuilder::default()
+            .with_inner_size([1280.0, 1024.0])
+            .with_drag_and_drop(true),
+
+        renderer: eframe::Renderer::Wgpu,
+        wgpu_options: WgpuConfiguration {
+            wgpu_setup: egui_wgpu::WgpuSetup::CreateNew(WgpuSetupCreateNew {
+                device_descriptor: Arc::new(|_| wgpu::DeviceDescriptor {
+                    label: None,
+                    required_features: wgpu::Features::PUSH_CONSTANTS
+                        | wgpu::Features::SPIRV_SHADER_PASSTHROUGH
+                        | wgpu::Features::MAPPABLE_PRIMARY_BUFFERS,
+                    required_limits: wgpu::Limits {
+                        max_push_constant_size: 128,
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }),
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+
+    Ok(eframe::run_native(
+        "space",
+        options,
+        Box::new(|cc| Ok(Box::new(SpaceEguiApp::new(cc, batch, objects).unwrap()))),
+    )
+    .map_err(|e| anyhow::anyhow!("Err: {e}"))?)
+}
+
 fn main() -> anyhow::Result<()> {
     env_logger::init();
     // let window = get_window(1280.0, 640.0)?;
@@ -164,14 +214,14 @@ fn main() -> anyhow::Result<()> {
     let token = Arc::new(AtomicBool::new(false));
     let token_clone = token.clone();
 
-    let mut app = SpaceApp::new(1280.0, 640.0, buffer_data, batch);
-
     let handle = std::thread::spawn(|| run_sim_loop(sim, batch_clone, token_clone));
 
-    let event_loop = EventLoop::new()?;
-    event_loop.set_control_flow(ControlFlow::Poll);
-
-    event_loop.run_app(&mut app)?;
+    let egui = true;
+    if egui {
+        graphics_egui(batch, buffer_data)?;
+    } else {
+        graphics_direct(batch, buffer_data)?;
+    }
 
     token.store(true, std::sync::atomic::Ordering::Relaxed);
     println!("Wait for task completion");

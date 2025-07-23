@@ -1,7 +1,14 @@
 use std::sync::Arc;
 
-use wgpu::{Adapter, CreateSurfaceError, Device, Queue, Surface, SurfaceConfiguration};
-use winit::{dpi::LogicalSize, event_loop::ActiveEventLoop, window::Window};
+use wgpu::{
+    Adapter, CreateSurfaceError, Device, Instance, Queue, Surface, SurfaceConfiguration,
+    SurfaceTexture, TextureFormat,
+};
+use winit::{
+    dpi::{LogicalSize, PhysicalSize},
+    event_loop::ActiveEventLoop,
+    window::Window,
+};
 
 pub struct WindowState {
     pub window: Arc<Window>,
@@ -26,6 +33,50 @@ pub struct SurfaceState {
     pub adapter: Adapter,
     pub device: Arc<Device>,
     pub queue: Queue,
+    #[expect(unused)]
+    pub instance: Instance,
+}
+
+impl SurfaceState {
+    pub fn resize(&mut self, size: PhysicalSize<u32>) {
+        if size.width != 0 && size.height != 0 {
+            if let Ok(surface_with_config) = &mut self.surface {
+                surface_with_config.config.width = size.width;
+                surface_with_config.config.height = size.height;
+                surface_with_config.configure(&self.device);
+            }
+        }
+    }
+
+    pub fn get_current_texture(&mut self) -> Option<SurfaceTexture> {
+        let Ok(surface_with_config) = &mut self.surface else {
+            return None;
+        };
+
+        match surface_with_config.surface.get_current_texture() {
+            Ok(surface) => Some(surface),
+            Err(err) => {
+                match err {
+                    wgpu::SurfaceError::Lost => {
+                        surface_with_config.configure(&self.device);
+                    }
+                    wgpu::SurfaceError::OutOfMemory => {
+                        println!("Out of memory!");
+                        return None;
+                    }
+                    _ => (),
+                }
+                None
+            }
+        }
+    }
+
+    pub fn texture_format(&self) -> TextureFormat {
+        self.surface
+            .as_ref()
+            .map(|s| s.config.format)
+            .unwrap_or(TextureFormat::Bgra8UnormSrgb)
+    }
 }
 
 impl SurfaceWithConfig {
@@ -76,6 +127,7 @@ pub async fn get_surface(window: Arc<Window>) -> anyhow::Result<SurfaceState> {
         adapter,
         device: Arc::new(device),
         queue,
+        instance,
     })
 }
 

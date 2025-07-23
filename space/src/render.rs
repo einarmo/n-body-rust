@@ -2,11 +2,11 @@ use std::sync::OnceLock;
 
 use bytemuck::cast_slice;
 use wgpu::{
-    BindGroup, Buffer, BufferDescriptor, BufferUsages, CommandEncoder, Device,
-    RenderPassDescriptor, ShaderModule, TextureView,
+    BindGroup, Buffer, BufferDescriptor, BufferUsages, CommandEncoder, Device, Queue,
+    RenderPassDescriptor, ShaderModule, Texture, TextureFormat, TextureView,
     util::{BufferInitDescriptor, DeviceExt},
 };
-use winit::{dpi::PhysicalSize, window::Window};
+use winit::dpi::PhysicalSize;
 
 use crate::{
     ShaderConstants,
@@ -14,7 +14,6 @@ use crate::{
     circle_pipeline::CircleDrawPipeline,
     objects::{OBJECT_STRIDE, Objects, TRAIL_MAX_LENGTH},
     pipeline::LineDrawPipeline,
-    surface::SurfaceState,
 };
 
 pub static SHADER: OnceLock<ShaderModule> = OnceLock::new();
@@ -27,7 +26,6 @@ pub fn get_or_init_shader(device: &Device) -> &ShaderModule {
 }
 
 pub struct Renderer {
-    surface: SurfaceState,
     window_size: PhysicalSize<u32>,
     point_buffer: Buffer,
     instance_buffer: Buffer,
@@ -38,37 +36,36 @@ pub struct Renderer {
 
 impl Renderer {
     pub fn new(
-        surface: SurfaceState,
-        window: &Window,
+        device: &Device,
+        texture_format: TextureFormat,
+        size: PhysicalSize<u32>,
         camera: &Camera,
         objects: &mut Objects,
     ) -> Self {
-        let instance_buffer = surface.device.create_buffer_init(&BufferInitDescriptor {
+        let instance_buffer = device.create_buffer_init(&BufferInitDescriptor {
             label: Some("instance buffer"),
             contents: cast_slice(objects.descriptions_mut()),
             usage: BufferUsages::VERTEX,
         });
         let num_objects = objects.num_objects();
 
-        let camera_layout = surface
-            .device
-            .create_bind_group_layout(&Camera::bind_group_layout());
-        let camera_bind_group = camera.create_bind_group(&camera_layout, &surface.device);
+        let camera_layout = device.create_bind_group_layout(&Camera::bind_group_layout());
+        let camera_bind_group = camera.create_bind_group(&camera_layout, device);
 
-        let line_pipeline = LineDrawPipeline::new(&surface, &camera_layout, num_objects);
+        let line_pipeline =
+            LineDrawPipeline::new(device, texture_format, &camera_layout, num_objects);
 
-        let point_buffer = surface.device.create_buffer(&BufferDescriptor {
+        let point_buffer = device.create_buffer(&BufferDescriptor {
             label: Some("pos_buffer"),
             size: (num_objects * OBJECT_STRIDE) as u64,
             usage: BufferUsages::VERTEX | BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
 
-        let circle_pipeline = CircleDrawPipeline::new(&surface, &camera_layout);
+        let circle_pipeline = CircleDrawPipeline::new(device, texture_format, &camera_layout);
 
         Self {
-            surface,
-            window_size: window.inner_size(),
+            window_size: size,
             instance_buffer,
             camera_bind_group,
             point_buffer,
@@ -77,30 +74,17 @@ impl Renderer {
         }
     }
 
-    pub fn redraw(&mut self, tick: u32, camera: &mut Camera, objects: &mut Objects) {
-        let Ok(surface_with_config) = &mut self.surface.surface else {
-            return;
-        };
-
-        let output = match surface_with_config.surface.get_current_texture() {
-            Ok(surface) => surface,
-            Err(err) => {
-                // eprintln!("get_current_texture error: {err:?}");
-                match err {
-                    wgpu::SurfaceError::Lost => {
-                        surface_with_config.configure(&self.surface.device);
-                    }
-                    wgpu::SurfaceError::OutOfMemory => {
-                        println!("Out of memory!");
-                        return;
-                    }
-                    _ => (),
-                }
-                return;
-            }
-        };
-        objects.flush_to_buffer(&self.point_buffer, &self.surface.queue);
-        camera.flush_if_needed(&self.surface.queue);
+    pub fn redraw(
+        &mut self,
+        tick: u32,
+        camera: &mut Camera,
+        objects: &mut Objects,
+        queue: &Queue,
+        output: &Texture,
+        device: &Device,
+    ) {
+        objects.flush_to_buffer(&self.point_buffer, queue);
+        camera.flush_if_needed(queue);
 
         /* let epos = objects.descriptions_mut()[1].position;
         let radius = objects.descriptions_mut()[1].radius;
@@ -109,28 +93,18 @@ impl Renderer {
         println!("{:?}", proj_epos);
         println!("{}", radius / proj_epos.z); */
 
-        let mut output_view = output
-            .texture
-            .create_view(&wgpu::TextureViewDescriptor::default());
-        let mut encoder = self
-            .surface
-            .device
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
+        let mut output_view = output.create_view(&wgpu::TextureViewDescriptor::default());
+        let mut encoder =
+            device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
 
         self.pass(&mut encoder, &mut output_view, tick, objects);
 
-        self.surface.queue.submit(Some(encoder.finish()));
-        output.present();
+        queue.submit(Some(encoder.finish()));
     }
 
     pub fn resize(&mut self, size: PhysicalSize<u32>) {
         if size.width != 0 && size.height != 0 {
             // Recreate the swap chain with the new size
-            if let Ok(surface_with_config) = &mut self.surface.surface {
-                surface_with_config.config.width = size.width;
-                surface_with_config.config.height = size.height;
-                surface_with_config.configure(&self.surface.device);
-            }
             self.window_size = size;
         }
     }
@@ -151,11 +125,12 @@ impl Renderer {
                     load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
                     store: wgpu::StoreOp::Store,
                 },
-                depth_slice: None,
             })],
             depth_stencil_attachment: None,
             ..Default::default()
         });
+        // Useful to not render the part of the screen where the UI is.
+        // rpass.set_scissor_rect(0, 0, self.window_size.width, self.window_size.height - 50);
 
         let index_range = objects.get_index_range();
 

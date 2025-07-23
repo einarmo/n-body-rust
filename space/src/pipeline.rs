@@ -1,16 +1,15 @@
 use std::ops::Range;
 
 use wgpu::{
-    BindGroup, BindGroupLayout, BlendComponent, BlendFactor, BlendState, Buffer,
+    BindGroup, BindGroupLayout, BlendComponent, BlendFactor, BlendState, Buffer, Device,
     PipelineCompilationOptions, PipelineLayoutDescriptor, PrimitiveState, RenderPass,
-    RenderPipeline, RenderPipelineDescriptor, util::DeviceExt,
+    RenderPipeline, RenderPipelineDescriptor, TextureFormat, util::DeviceExt,
 };
 
 use crate::{
     ShaderConstants,
     objects::{ObjectInstance, TRAIL_MAX_LENGTH, Vertex},
     render::get_or_init_shader,
-    surface::SurfaceState,
 };
 
 pub(crate) struct LineDrawPipeline {
@@ -20,20 +19,19 @@ pub(crate) struct LineDrawPipeline {
 
 impl LineDrawPipeline {
     pub fn new(
-        surface: &SurfaceState,
+        device: &Device,
+        texture_format: TextureFormat,
         camera_layout: &BindGroupLayout,
         num_objects: usize,
     ) -> Self {
-        let pipeline_layout = surface
-            .device
-            .create_pipeline_layout(&PipelineLayoutDescriptor {
-                label: None,
-                bind_group_layouts: &[camera_layout],
-                push_constant_ranges: &[wgpu::PushConstantRange {
-                    stages: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
-                    range: 0..std::mem::size_of::<ShaderConstants>() as u32,
-                }],
-            });
+        let pipeline_layout = device.create_pipeline_layout(&PipelineLayoutDescriptor {
+            label: None,
+            bind_group_layouts: &[camera_layout],
+            push_constant_ranges: &[wgpu::PushConstantRange {
+                stages: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
+                range: 0..std::mem::size_of::<ShaderConstants>() as u32,
+            }],
+        });
 
         let mut index_list: Vec<u32> = Vec::with_capacity(TRAIL_MAX_LENGTH * 2);
 
@@ -43,66 +41,57 @@ impl LineDrawPipeline {
             }
         }
 
-        let index_buffer = surface
-            .device
-            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("Index Buffer"),
-                contents: bytemuck::cast_slice(&index_list),
-                usage: wgpu::BufferUsages::INDEX,
-            });
+        let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Index Buffer"),
+            contents: bytemuck::cast_slice(&index_list),
+            usage: wgpu::BufferUsages::INDEX,
+        });
 
-        let shader_module = get_or_init_shader(&surface.device);
-        let color_format = surface.surface.as_ref().map_or_else(
-            |_: &wgpu::CreateSurfaceError| wgpu::TextureFormat::Rgba8UnormSrgb,
-            |c| c.config.format,
-        );
-
-        let pipeline = surface
-            .device
-            .create_render_pipeline(&RenderPipelineDescriptor {
-                label: Some("line pipeline"),
-                layout: Some(&pipeline_layout),
-                vertex: wgpu::VertexState {
-                    module: shader_module,
-                    entry_point: Some("line_vs"),
-                    buffers: &[Vertex::layout::<true>(), ObjectInstance::layout::<2>()],
-                    compilation_options: PipelineCompilationOptions::default(),
-                },
-                cache: None,
-                primitive: PrimitiveState {
-                    topology: wgpu::PrimitiveTopology::LineStrip,
-                    strip_index_format: None,
-                    front_face: wgpu::FrontFace::Ccw,
-                    cull_mode: None,
-                    unclipped_depth: false,
-                    polygon_mode: wgpu::PolygonMode::Fill,
-                    conservative: false,
-                },
-                depth_stencil: None,
-                multisample: wgpu::MultisampleState {
-                    count: 1,
-                    mask: !0,
-                    alpha_to_coverage_enabled: false,
-                },
-                fragment: Some(wgpu::FragmentState {
-                    module: &shader_module,
-                    entry_point: Some("line_fs"),
-                    targets: &[Some(wgpu::ColorTargetState {
-                        format: color_format,
-                        blend: Some(BlendState {
-                            color: BlendComponent {
-                                src_factor: BlendFactor::SrcAlpha,
-                                dst_factor: BlendFactor::OneMinusSrcAlpha,
-                                operation: wgpu::BlendOperation::Add,
-                            },
-                            alpha: BlendComponent::OVER,
-                        }),
-                        write_mask: wgpu::ColorWrites::ALL,
-                    })],
-                    compilation_options: PipelineCompilationOptions::default(),
-                }),
-                multiview: None,
-            });
+        let shader_module = get_or_init_shader(device);
+        let pipeline = device.create_render_pipeline(&RenderPipelineDescriptor {
+            label: Some("line pipeline"),
+            layout: Some(&pipeline_layout),
+            vertex: wgpu::VertexState {
+                module: shader_module,
+                entry_point: Some("line_vs"),
+                buffers: &[Vertex::layout::<true>(), ObjectInstance::layout::<2>()],
+                compilation_options: PipelineCompilationOptions::default(),
+            },
+            cache: None,
+            primitive: PrimitiveState {
+                topology: wgpu::PrimitiveTopology::LineStrip,
+                strip_index_format: None,
+                front_face: wgpu::FrontFace::Ccw,
+                cull_mode: None,
+                unclipped_depth: false,
+                polygon_mode: wgpu::PolygonMode::Fill,
+                conservative: false,
+            },
+            depth_stencil: None,
+            multisample: wgpu::MultisampleState {
+                count: 1,
+                mask: !0,
+                alpha_to_coverage_enabled: false,
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &shader_module,
+                entry_point: Some("line_fs"),
+                targets: &[Some(wgpu::ColorTargetState {
+                    format: texture_format,
+                    blend: Some(BlendState {
+                        color: BlendComponent {
+                            src_factor: BlendFactor::SrcAlpha,
+                            dst_factor: BlendFactor::OneMinusSrcAlpha,
+                            operation: wgpu::BlendOperation::Add,
+                        },
+                        alpha: BlendComponent::OVER,
+                    }),
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+                compilation_options: PipelineCompilationOptions::default(),
+            }),
+            multiview: None,
+        });
 
         Self {
             pipeline,
@@ -110,12 +99,12 @@ impl LineDrawPipeline {
         }
     }
 
-    pub fn draw<'a: 'b, 'b>(
-        &'a self,
-        rpass: &mut RenderPass<'b>,
-        camera: &'b BindGroup,
-        buffer: &'b Buffer,
-        instance_buffer: &'b Buffer,
+    pub fn draw(
+        &self,
+        rpass: &mut RenderPass<'_>,
+        camera: &BindGroup,
+        buffer: &Buffer,
+        instance_buffer: &Buffer,
         push_constants: &ShaderConstants,
         index_range: Range<u32>,
         num_objects: usize,

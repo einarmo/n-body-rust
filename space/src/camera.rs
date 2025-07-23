@@ -25,7 +25,7 @@ pub struct Camera {
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
-struct CameraUniform {
+pub struct CameraUniform {
     view_proj: [[f32; 4]; 4],
     view: [[f32; 4]; 4],
     projection: [[f32; 4]; 4],
@@ -99,7 +99,11 @@ impl Camera {
     }
 
     pub fn resize(&mut self, size: PhysicalSize<u32>) {
-        self.aspect = size.width as f32 / size.height as f32;
+        let new_aspect = size.width as f32 / size.height as f32;
+        if new_aspect == self.aspect {
+            return;
+        }
+        self.aspect = new_aspect;
         self.changed = true;
     }
 
