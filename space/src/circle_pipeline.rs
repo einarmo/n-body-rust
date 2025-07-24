@@ -57,7 +57,7 @@ impl CircleDrawPipeline {
                 alpha_to_coverage_enabled: false,
             },
             fragment: Some(wgpu::FragmentState {
-                module: &shader_module,
+                module: shader_module,
                 entry_point: Some("circle_fs"),
                 targets: &[Some(wgpu::ColorTargetState {
                     format: texture_format,
@@ -79,6 +79,7 @@ impl CircleDrawPipeline {
         Self { pipeline }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn draw(
         &self,
         rpass: &mut RenderPass<'_>,

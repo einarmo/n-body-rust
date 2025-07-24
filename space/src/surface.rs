@@ -39,13 +39,12 @@ pub struct SurfaceState {
 
 impl SurfaceState {
     pub fn resize(&mut self, size: PhysicalSize<u32>) {
-        if size.width != 0 && size.height != 0 {
-            if let Ok(surface_with_config) = &mut self.surface {
+        if size.width != 0 && size.height != 0
+            && let Ok(surface_with_config) = &mut self.surface {
                 surface_with_config.config.width = size.width;
                 surface_with_config.config.height = size.height;
                 surface_with_config.configure(&self.device);
             }
-        }
     }
 
     pub fn get_current_texture(&mut self) -> Option<SurfaceTexture> {

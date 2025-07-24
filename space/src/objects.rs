@@ -155,7 +155,7 @@ impl ObjectVertexCache {
     pub fn position_of(&self, idx: usize) -> &[f32; 3] {
         let mut vertex_idx_raw = idx as i64 - self.num_objects as i64 + self.pending_tail as i64;
         if vertex_idx_raw < 0 {
-            vertex_idx_raw = TRAIL_MAX_LENGTH as i64 * self.num_objects as i64 + vertex_idx_raw;
+            vertex_idx_raw += TRAIL_MAX_LENGTH as i64 * self.num_objects as i64;
         }
         &self.buff[vertex_idx_raw as usize].pos
     }

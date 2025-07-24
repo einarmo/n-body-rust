@@ -79,8 +79,9 @@ fn compute_from_orbital_params(
 ) -> AbsoluteCoords {
     let mu = G_ABS * (parent.mass * M0 + mass * M0);
     let true_anom: Rad<f64> = Deg(coords.true_an).into();
+    let ecc_squared: f64 = coords.eccentricity.powi(2);
     let ecc_anomaly = Rad(f64::atan2(
-        (1.0 - coords.eccentricity.pow(2) as f64).sqrt() * true_anom.0.sin(),
+        (1.0 - ecc_squared).sqrt() * true_anom.0.sin(),
         coords.eccentricity + true_anom.0.cos(),
     ));
 
@@ -112,12 +113,12 @@ fn compute_from_orbital_params(
         p_z * velocity_basis + angular_momentum / radius * inclination.sin() * real_angle.cos();
 
     println!("Angular momentum: {}", angular_momentum / radius);
-    println!("Radius: {}", radius);
+    println!("Radius: {radius}");
     let v_vec = Vector3::new(v_x, v_y, v_z);
     println!("Direction: {:?}", v_vec.normalize());
     let p_vec = Point3::new(p_x, p_y, p_z);
     println!("Vector to parent: {:?}", (parent.pos - p_vec).normalize());
-    println!("Velocity basis: {}", velocity_basis);
+    println!("Velocity basis: {velocity_basis}");
 
     println!(
         "Velocity cross direction: {:?}",

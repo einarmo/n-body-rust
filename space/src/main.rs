@@ -200,12 +200,12 @@ fn graphics_egui(batch: Arc<BatchRequest>, objects: Objects) -> anyhow::Result<(
         ..Default::default()
     };
 
-    Ok(eframe::run_native(
+    eframe::run_native(
         "space",
         options,
         Box::new(|cc| Ok(Box::new(SpaceEguiApp::new(cc, batch, objects).unwrap()))),
     )
-    .map_err(|e| anyhow::anyhow!("Err: {e}"))?)
+    .map_err(|e| anyhow::anyhow!("Err: {e}"))
 }
 
 fn main() -> anyhow::Result<()> {
@@ -214,7 +214,7 @@ fn main() -> anyhow::Result<()> {
 
     let objects = earth_sun_parameter();
 
-    println!("Running with {:?}", objects);
+    println!("Running with {objects:?}");
 
     let num_objects = objects.len();
 

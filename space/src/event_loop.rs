@@ -149,7 +149,6 @@ impl ApplicationHandler<()> for SpaceApp {
                 Err(e) => {
                     eprintln!("Failed to initialize app: {e}");
                     event_loop.exit();
-                    return;
                 }
             }
         }

@@ -55,7 +55,7 @@ impl SpaceEguiApp {
                 width: initial_size.x as u32,
                 height: initial_size.y as u32,
             },
-            &wgpu_render_state,
+            wgpu_render_state,
         );
 
         Some(Self {
@@ -85,35 +85,32 @@ impl eframe::App for SpaceEguiApp {
             self.camera.resize(psize);
             self.renderer.resize(psize);
             let state = frame.wgpu_render_state().unwrap();
-            self.texture.resize(&state.device, psize, &state);
+            self.texture.resize(&state.device, psize, state);
 
             ui.input(|i| {
                 for evt in &i.events {
-                    match evt {
-                        egui::Event::Key { key, pressed, .. } => match key {
-                            Key::ArrowUp => self.keyboard_state.up = *pressed,
-                            Key::ArrowDown => self.keyboard_state.down = *pressed,
-                            Key::ArrowLeft => self.keyboard_state.left = *pressed,
-                            Key::ArrowRight => self.keyboard_state.right = *pressed,
-                            Key::Home => self.keyboard_state.home = *pressed,
-                            Key::PageUp => self.keyboard_state.pgup = *pressed,
-                            Key::Space => self.keyboard_state.space.event(*pressed),
-                            Key::W => self.keyboard_state.w = *pressed,
-                            Key::S => self.keyboard_state.s = *pressed,
-                            Key::A => self.keyboard_state.a = *pressed,
-                            Key::D => self.keyboard_state.d = *pressed,
-                            Key::Minus => self.keyboard_state.minus = *pressed,
-                            Key::Plus => self.keyboard_state.plus = *pressed,
-                            Key::F => self.keyboard_state.f.event(*pressed),
-                            Key::G => self.keyboard_state.g.event(*pressed),
-                            Key::H => self.keyboard_state.h.event(*pressed),
-                            Key::J => self.keyboard_state.j.event(*pressed),
-                            Key::O => self.keyboard_state.o = *pressed,
-                            Key::L => self.keyboard_state.l = *pressed,
-                            _ => (),
-                        },
+                    if let egui::Event::Key { key, pressed, .. } = evt { match key {
+                        Key::ArrowUp => self.keyboard_state.up = *pressed,
+                        Key::ArrowDown => self.keyboard_state.down = *pressed,
+                        Key::ArrowLeft => self.keyboard_state.left = *pressed,
+                        Key::ArrowRight => self.keyboard_state.right = *pressed,
+                        Key::Home => self.keyboard_state.home = *pressed,
+                        Key::PageUp => self.keyboard_state.pgup = *pressed,
+                        Key::Space => self.keyboard_state.space.event(*pressed),
+                        Key::W => self.keyboard_state.w = *pressed,
+                        Key::S => self.keyboard_state.s = *pressed,
+                        Key::A => self.keyboard_state.a = *pressed,
+                        Key::D => self.keyboard_state.d = *pressed,
+                        Key::Minus => self.keyboard_state.minus = *pressed,
+                        Key::Plus => self.keyboard_state.plus = *pressed,
+                        Key::F => self.keyboard_state.f.event(*pressed),
+                        Key::G => self.keyboard_state.g.event(*pressed),
+                        Key::H => self.keyboard_state.h.event(*pressed),
+                        Key::J => self.keyboard_state.j.event(*pressed),
+                        Key::O => self.keyboard_state.o = *pressed,
+                        Key::L => self.keyboard_state.l = *pressed,
                         _ => (),
-                    }
+                    } }
                 }
             });
 
