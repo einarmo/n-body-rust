@@ -10,6 +10,8 @@ use crate::{
     render::Renderer,
 };
 
+mod info;
+
 pub struct SpaceEguiApp {
     camera: Camera,
     exchange: Arc<BatchRequest>,
@@ -18,6 +20,7 @@ pub struct SpaceEguiApp {
     keyboard_state: KeyboardState,
     renderer: Renderer,
     texture: IntermediateTexture,
+    info_panel: info::InfoPanel,
 }
 
 impl SpaceEguiApp {
@@ -63,6 +66,7 @@ impl SpaceEguiApp {
             keyboard_state: KeyboardState::default(),
             renderer,
             texture,
+            info_panel: info::InfoPanel::new(),
         })
     }
 }
@@ -74,7 +78,7 @@ impl eframe::App for SpaceEguiApp {
             ui.label("Neato space sim");
 
             let psize = PhysicalSize {
-                width: ui.available_width() as u32,
+                width: ui.available_width() as u32 - 300,
                 height: ui.available_height() as u32,
             };
 
@@ -104,6 +108,8 @@ impl eframe::App for SpaceEguiApp {
                             Key::G => self.keyboard_state.g.event(*pressed),
                             Key::H => self.keyboard_state.h.event(*pressed),
                             Key::J => self.keyboard_state.j.event(*pressed),
+                            Key::O => self.keyboard_state.o = *pressed,
+                            Key::L => self.keyboard_state.l = *pressed,
                             _ => (),
                         },
                         _ => (),
@@ -122,6 +128,13 @@ impl eframe::App for SpaceEguiApp {
                 .set_focus(&mut self.keyboard_state, &mut self.objects);
             self.camera.rot(&self.keyboard_state);
 
+            if self.keyboard_state.l {
+                self.exchange.set_delta(self.exchange.delta() * 0.9);
+            }
+            if self.keyboard_state.o {
+                self.exchange.set_delta(self.exchange.delta() * 1.1);
+            }
+
             self.renderer.redraw(
                 self.tick,
                 &mut self.camera,
@@ -131,10 +144,22 @@ impl eframe::App for SpaceEguiApp {
                 &state.device,
             );
 
-            ui.add(Image::new(SizedTexture::new(
-                self.texture.id,
-                Vec2::new(ui.available_width(), ui.available_height()),
-            )));
+            let outer_height = ui.available_height();
+
+            ui.horizontal(|ui| {
+                ui.add(Image::new(SizedTexture::new(
+                    self.texture.id,
+                    Vec2::new(ui.available_width() - 300.0, outer_height),
+                )));
+                self.info_panel.render(
+                    ui,
+                    &self.objects,
+                    self.exchange.current_ticks(),
+                    &self.camera,
+                    self.tick,
+                    self.exchange.delta(),
+                );
+            });
         });
         ctx.request_repaint();
     }

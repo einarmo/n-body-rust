@@ -3,13 +3,14 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Mutex;
 
 use crate::objects::Objects;
-use crate::sim::ObjectBuffer;
+use crate::sim::{DELTA, ObjectBuffer};
 
 /// Primitive for communicating between simulation and graphics.
 pub struct BatchRequest {
     sample: Mutex<Vec<[f32; 3]>>,
     should_sample: AtomicBool,
     simulation_tick: AtomicU64,
+    delta: AtomicU64,
 }
 
 impl BatchRequest {
@@ -18,7 +19,16 @@ impl BatchRequest {
             sample: Mutex::new(vec![[0.0, 0.0, 0.0]; n_objects]),
             should_sample: AtomicBool::new(true),
             simulation_tick: AtomicU64::new(0),
+            delta: AtomicU64::new(DELTA.to_bits()),
         }
+    }
+
+    pub fn delta(&self) -> f64 {
+        f64::from_bits(self.delta.load(Ordering::Relaxed))
+    }
+
+    pub fn set_delta(&self, rate: f64) {
+        self.delta.store(rate.to_bits(), Ordering::Relaxed);
     }
 
     /// Return whether we are ready to a accept a new simulation batch.

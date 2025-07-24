@@ -171,6 +171,7 @@ impl ObjectVertexCache {
 pub struct Objects {
     vertices: ObjectVertexCache,
     descriptions: Vec<ObjectInstance>,
+    infos: Vec<Object>,
     target_object: Option<usize>,
 }
 
@@ -178,17 +179,20 @@ impl Objects {
     pub fn new(init: &[Object]) -> Self {
         let num_objects = init.len();
         let mut descriptions = Vec::with_capacity(num_objects);
+        let mut infos = Vec::with_capacity(num_objects);
         for obj in init {
             descriptions.push(ObjectInstance {
                 color: obj.color.into(),
                 radius: obj.radius,
-            })
+            });
+            infos.push(obj.clone());
         }
 
         Self {
             vertices: ObjectVertexCache::new(num_objects),
             descriptions,
             target_object: None,
+            infos,
         }
     }
 
@@ -233,6 +237,10 @@ impl Objects {
 
     pub fn descriptions_mut(&mut self) -> &mut [ObjectInstance] {
         self.descriptions.as_mut_slice()
+    }
+
+    pub fn objects(&self) -> &[Object] {
+        &self.infos
     }
 
     pub fn position_of(&self, idx: usize) -> &[f32; 3] {

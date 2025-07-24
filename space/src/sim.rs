@@ -22,7 +22,7 @@ pub const _SPEED: f64 = 29.8e3 / AU;
 pub const _REF: f64 = 6.674e-11 * M0 * 333000.0 / (AU * AU);
 pub const _REF2: f64 = _REF / AU;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ObjectInfo {
     pub pos: Point3<f64>,
     pub vel: Vector3<f64>,
@@ -83,17 +83,17 @@ impl ObjectBuffer {
         }
     }
 
-    pub fn exec_iter(&mut self) {
+    pub fn exec_iter(&mut self, delta: f64) {
         // Number of objects per thread is equal to ceil[num_objects / num_threads]
         self.pool
             .install(|| exec_iter_rec(&self.objects, &mut self.out_buffer, self.per_thread, 0));
         for (obj, acc) in self.objects.iter_mut().zip(self.out_buffer.iter_mut()) {
             // Integrate the acceleration by multiplying it with the time step
             // and add it to the velocity
-            obj.vel += *acc * DELTA;
+            obj.vel += *acc * delta;
             // Integrate the velocity by multiplying it with the time step
             // and add it to the position
-            obj.pos += obj.vel * DELTA;
+            obj.pos += obj.vel * delta;
             // We keep the acceleration object for the next iteration, but we need to reset it.
             acc.x = 0.0;
             acc.y = 0.0;
@@ -127,27 +127,28 @@ const SEC_PER_HOUR: f64 = 60.0 * 60.0;
 const SEC_PER_DAY: f64 = SEC_PER_HOUR * 24.0;
 const SEC_PER_YEAR: f64 = 365.25 * SEC_PER_DAY;
 
+#[derive(Default)]
 pub struct ElapsedTime {
     pub years: u64,
     pub days: u64,
     pub hours: u64,
     pub minutes: u64,
     pub seconds: f64,
-    pub ticks: u64,
+    pub ticks: f64,
 }
 
 impl Display for ElapsedTime {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "{}Y {}D {}:{}:{} ({} ticks)",
+            "{}Y {}D {:0>2}:{:0>2}:{:0>2} ({} ticks)",
             self.years, self.days, self.hours, self.minutes, self.seconds, self.ticks
         )
     }
 }
 
-pub fn compute_elapsed_time(ticks: u64) -> ElapsedTime {
-    let mut time_s = (ticks as f64) * DELTA;
+pub fn compute_elapsed_time(ticks: f64) -> ElapsedTime {
+    let mut time_s = ticks * DELTA;
 
     let years = (time_s / SEC_PER_YEAR).floor();
     time_s -= years * SEC_PER_YEAR;

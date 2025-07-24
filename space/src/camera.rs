@@ -162,6 +162,10 @@ impl Camera {
         self.changed = true;
     }
 
+    pub fn focus(&self) -> Option<i64> {
+        self.focus
+    }
+
     pub fn set_focus(&mut self, keys: &mut KeyboardState, objects: &mut Objects) {
         if keys.f.get_trigger() {
             self.focus =

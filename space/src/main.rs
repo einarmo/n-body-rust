@@ -43,8 +43,9 @@ struct ShaderConstants {
     pub last_relative_position: [f32; 3],
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Object {
+    name: String,
     dat: ObjectInfo,
     color: Vector3<f32>,
     radius: f32,
@@ -54,6 +55,7 @@ pub struct Object {
 fn earth_sun_basic() -> Vec<Object> {
     vec![
         Object {
+            name: "sun".to_owned(),
             dat: ObjectInfo {
                 pos: (0.0, 0.0, 0.0).into(),
                 vel: (0.0, 1e3 / AU, 0.0).into(),
@@ -63,6 +65,7 @@ fn earth_sun_basic() -> Vec<Object> {
             radius: (696340e3 / AU) as f32,
         },
         Object {
+            name: "earth".to_owned(),
             dat: ObjectInfo {
                 pos: (1.0, 0.0, 0.0).into(),
                 vel: (0.0, (29.8e3 + 1e3) / AU, 0.0).into(),
@@ -78,7 +81,7 @@ fn earth_sun_basic() -> Vec<Object> {
 fn earth_sun_parameter() -> Vec<Object> {
     convert_params([
         StandardParams {
-            name: Some("sun".to_owned()),
+            name: "sun".to_owned(),
             coordinates: RelativeOrAbsolute::Absolute(AbsoluteCoords {
                 pos: [0.0, 0.0, 0.0],
                 vel: [0.0, 0.0, 0.0],
@@ -88,7 +91,7 @@ fn earth_sun_parameter() -> Vec<Object> {
             color: (1.0, 1.0, 0.0).into(),
         },
         StandardParams {
-            name: Some("earth".to_owned()),
+            name: "earth".to_owned(),
             coordinates: RelativeOrAbsolute::Relative(RelativeCoords {
                 parent: "sun".to_owned(),
                 semi_major_axis: 1.495365477412831E+08 * 1e3,
@@ -107,7 +110,7 @@ fn earth_sun_parameter() -> Vec<Object> {
             color: (0.0, 0.0, 1.0).into(),
         },
         StandardParams {
-            name: Some("moon".to_owned()),
+            name: "moon".to_owned(),
             coordinates: RelativeOrAbsolute::Relative(RelativeCoords {
                 parent: "earth".to_owned(),
                 semi_major_axis: 3.815880763110870E+05 * 1e3,
@@ -123,7 +126,7 @@ fn earth_sun_parameter() -> Vec<Object> {
         },
         // Give the moon a tiny satelite
         StandardParams {
-            name: Some("moon-satellite".to_owned()),
+            name: "moon-satellite".to_owned(),
             coordinates: RelativeOrAbsolute::Relative(RelativeCoords {
                 parent: "moon".to_owned(),
                 semi_major_axis: 1.0e7, // 100km
@@ -139,7 +142,7 @@ fn earth_sun_parameter() -> Vec<Object> {
             color: (0.5, 0.5, 0.5).into(),
         },
         StandardParams {
-            name: Some("mars".to_owned()),
+            name: "mars".to_owned(),
             coordinates: RelativeOrAbsolute::Relative(RelativeCoords {
                 parent: "sun".to_owned(),
                 semi_major_axis: 227956E+6,

@@ -24,6 +24,7 @@ pub struct ConvertedOrbitalParams {
 impl From<ConvertedOrbitalParams> for Object {
     fn from(value: ConvertedOrbitalParams) -> Self {
         Self {
+            name: value.name,
             dat: ObjectInfo {
                 pos: value.pos / AU,
                 vel: value.vel / AU,
@@ -64,7 +65,7 @@ pub enum RelativeOrAbsolute {
 }
 
 pub struct StandardParams {
-    pub name: Option<String>,
+    pub name: String,
     pub coordinates: RelativeOrAbsolute,
     pub mass: f64,
     pub radius: f32,
@@ -160,7 +161,7 @@ pub fn convert_params(
             item.name, absolute_coords.pos, absolute_coords.vel
         );
         let params = ConvertedOrbitalParams {
-            name: item.name.unwrap_or_else(|| idx.to_string()),
+            name: item.name,
             index: idx,
             parent_index: parent_idx,
             pos: absolute_coords.pos.into(),
