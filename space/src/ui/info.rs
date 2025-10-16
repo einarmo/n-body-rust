@@ -54,8 +54,8 @@ impl InfoPanel {
 
         ui.vertical(|ui| {
             if ui_tick % 10 == 0 {
-                self.last_time = compute_elapsed_time(tick as f64);
-                self.last_time_per_second = compute_elapsed_time(avg_tick_rate);
+                self.last_time = compute_elapsed_time(tick as f64, delta);
+                self.last_time_per_second = compute_elapsed_time(avg_tick_rate, delta);
             }
             ui.label(format!("Current time: {}", self.last_time));
             ui.label(format!(
@@ -64,7 +64,7 @@ impl InfoPanel {
             ));
             ui.label(format!(
                 "Current time per tick: {}",
-                compute_elapsed_time(delta)
+                compute_elapsed_time(1.0, delta)
             ));
 
             if let Some(focus) = camera.focus()

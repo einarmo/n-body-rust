@@ -3,24 +3,7 @@ use std::fmt::Display;
 use cgmath::{InnerSpace, Point3, Vector3, Zero};
 use rayon::{ThreadPool, ThreadPoolBuilder};
 
-// Average distance between earth and the sun, in meters
-pub const AU: f64 = 1.495e11;
-// Mass of earth, in kilograms
-pub const M0: f64 = 5.972e24;
-
-pub const G_ABS: f64 = 6.674e-11;
-// Adjusted gravitational constant in earth masses and AU
-pub const G: f64 = G_ABS * M0 / (AU * AU * AU);
-// Seconds per computation (really!)
-pub const DELTA: f64 = 10.0;
-// Padding between all objects to avoid division by zero, 10 meters.
-// pub const COLLISION_EPSILON: f64 = (10.0 / AU) * (10.0 / AU);
-pub const COLLISION_EPSILON: f64 = 0.0;
-
-pub const _TEST: f64 = G * 333000.0;
-pub const _SPEED: f64 = 29.8e3 / AU;
-pub const _REF: f64 = 6.674e-11 * M0 * 333000.0 / (AU * AU);
-pub const _REF2: f64 = _REF / AU;
+use crate::constants::{COLLISION_EPSILON, G, MAX_THREADS, OBJECTS_PER_THREAD};
 
 #[derive(Debug, Clone)]
 pub struct ObjectInfo {
@@ -43,27 +26,9 @@ pub struct ObjectBuffer {
     pool: ThreadPool,
 }
 
-const MAX_THREADS: usize = 4;
-const OBJECTS_PER_THREAD: usize = 10;
-
 pub fn compute_target_threads(n_objects: usize) -> usize {
     assert!(n_objects > 0);
     n_objects.div_ceil(OBJECTS_PER_THREAD).min(MAX_THREADS)
-}
-
-fn iter_chunk(objects: &[ObjectInfo], out_buffer: &mut [Vector3<f64>], start: usize) {
-    let range = start..(start + out_buffer.len());
-    debug_assert!(range.end <= objects.len());
-    for (idx, i) in range.enumerate() {
-        let obj = &objects[i];
-        let out = &mut out_buffer[idx];
-        for (other_idx, other) in objects.iter().enumerate() {
-            if other_idx == i {
-                continue;
-            }
-            obj.get_acc_towards(other, out);
-        }
-    }
 }
 
 impl ObjectBuffer {
@@ -87,17 +52,67 @@ impl ObjectBuffer {
         // Number of objects per thread is equal to ceil[num_objects / num_threads]
         self.pool
             .install(|| exec_iter_rec(&self.objects, &mut self.out_buffer, self.per_thread, 0));
-        for (obj, acc) in self.objects.iter_mut().zip(self.out_buffer.iter_mut()) {
-            // Integrate the acceleration by multiplying it with the time step
-            // and add it to the velocity
-            obj.vel += *acc * delta;
-            // Integrate the velocity by multiplying it with the time step
-            // and add it to the position
-            obj.pos += obj.vel * delta;
-            // We keep the acceleration object for the next iteration, but we need to reset it.
-            acc.x = 0.0;
-            acc.y = 0.0;
-            acc.z = 0.0;
+        self.pool.install(|| {
+            add_acc_rec(
+                &mut self.objects,
+                &mut self.out_buffer,
+                self.per_thread,
+                0,
+                delta,
+            )
+        });
+    }
+}
+
+fn add_acc(objects: &mut [ObjectInfo], acc: &mut [Vector3<f64>], delta: f64) {
+    for (obj, acc) in objects.iter_mut().zip(acc.iter_mut()) {
+        // Integrate the acceleration by multiplying it with the time step
+        // and add it to the velocity
+        obj.vel += *acc * delta;
+        // Integrate the velocity by multiplying it with the time step
+        // and add it to the position
+        obj.pos += obj.vel * delta;
+        // We keep the acceleration object for the next iteration, but we need to reset it.
+        acc.x = 0.0;
+        acc.y = 0.0;
+        acc.z = 0.0;
+    }
+}
+
+fn add_acc_rec(
+    objects: &mut [ObjectInfo],
+    acc: &mut [Vector3<f64>],
+    per_thread: usize,
+    idx: usize,
+    delta: f64,
+) {
+    if per_thread >= objects.len() {
+        add_acc(objects, acc, delta);
+    } else {
+        let (obj_slice, next_obj) = objects.split_at_mut(per_thread);
+        let (acc_slice, next_acc) = acc.split_at_mut(per_thread);
+        rayon::join(
+            || {
+                add_acc_rec(obj_slice, acc_slice, per_thread, idx, delta);
+            },
+            || {
+                add_acc_rec(next_obj, next_acc, per_thread, idx + 1, delta);
+            },
+        );
+    }
+}
+
+fn iter_chunk(objects: &[ObjectInfo], out_buffer: &mut [Vector3<f64>], start: usize) {
+    let range = start..(start + out_buffer.len());
+    debug_assert!(range.end <= objects.len());
+    for (idx, i) in range.enumerate() {
+        let obj = &objects[i];
+        let out = &mut out_buffer[idx];
+        for (other_idx, other) in objects.iter().enumerate() {
+            if other_idx == i {
+                continue;
+            }
+            obj.get_acc_towards(other, out);
         }
     }
 }
@@ -147,8 +162,8 @@ impl Display for ElapsedTime {
     }
 }
 
-pub fn compute_elapsed_time(ticks: f64) -> ElapsedTime {
-    let mut time_s = ticks * DELTA;
+pub fn compute_elapsed_time(ticks: f64, delta: f64) -> ElapsedTime {
+    let mut time_s = ticks * delta;
 
     let years = (time_s / SEC_PER_YEAR).floor();
     time_s -= years * SEC_PER_YEAR;

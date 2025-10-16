@@ -2,8 +2,9 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 use std::sync::Mutex;
 
+use crate::constants::DELTA;
 use crate::objects::Objects;
-use crate::sim::{DELTA, ObjectBuffer};
+use crate::sim::ObjectBuffer;
 
 /// Primitive for communicating between simulation and graphics.
 pub struct BatchRequest {

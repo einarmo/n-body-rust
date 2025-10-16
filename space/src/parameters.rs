@@ -4,7 +4,8 @@ use cgmath::{Angle, Deg, InnerSpace, Point3, Rad, Vector3, Zero, num_traits::Pow
 
 use crate::{
     Object,
-    sim::{AU, G_ABS, M0, ObjectInfo},
+    constants::{AU, G_ABS, M0},
+    sim::ObjectInfo,
 };
 
 pub struct ConvertedOrbitalParams {
@@ -45,17 +46,17 @@ pub struct AbsoluteCoords {
 #[derive(Debug)]
 pub struct RelativeCoords {
     pub parent: String,
-    // In meters
+    /// In meters
     pub semi_major_axis: f64,
-    // [0, 1]
+    /// [0, 1]
     pub eccentricity: f64,
-    // In degrees
+    /// In degrees
     pub inclination: f64,
-    // In degrees
+    /// In degrees
     pub arg_periapsis: f64,
-    // In degrees
+    /// In degrees
     pub long_asc_node: f64,
-    // In degrees
+    /// In degrees
     pub true_an: f64,
 }
 

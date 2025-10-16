@@ -15,6 +15,7 @@ use winit::{
 use crate::{
     batch_request::BatchRequest,
     camera::Camera,
+    constants::{CHECK_INTERVAL, DELTA},
     objects::Objects,
     render::Renderer,
     sim::{ObjectBuffer, compute_elapsed_time},
@@ -287,9 +288,10 @@ impl ApplicationHandler<()> for SpaceApp {
 
                 if self.tick % 60 == 0 {
                     let sim_ticks = self.exchange.current_ticks();
-                    let actual_time = compute_elapsed_time(sim_ticks as f64);
+                    let actual_time = compute_elapsed_time(sim_ticks as f64, DELTA);
 
                     println!("Elapsed time: {actual_time}");
+                    println!("Elapsed ticks: {sim_ticks}");
                 }
                 // println!("Ticks since last: {:?}", *next_tick_ref - last_draw);
 
@@ -300,24 +302,21 @@ impl ApplicationHandler<()> for SpaceApp {
     }
 }
 
-const CHECK_INTERVAL: u64 = 500;
-
 pub fn run_sim_loop(mut sim: ObjectBuffer, exchange: Arc<BatchRequest>, token: Arc<AtomicBool>) {
     let mut i = 0u64;
 
     let mut delta = exchange.delta();
 
     loop {
-        i += 1;
-
-        sim.exec_iter(delta);
-        if i % CHECK_INTERVAL == 0 {
-            if exchange.should_store() {
-                exchange.store(&sim, i);
-                delta = exchange.delta();
-            } else if token.load(Ordering::Relaxed) {
-                break;
-            }
+        for _ in 0..CHECK_INTERVAL {
+            sim.exec_iter(delta);
+        }
+        i += CHECK_INTERVAL;
+        if exchange.should_store() {
+            exchange.store(&sim, i);
+            delta = exchange.delta();
+        } else if token.load(Ordering::Relaxed) {
+            break;
         }
     }
     println!("Event loop terminated");
