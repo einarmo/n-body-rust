@@ -1,7 +1,7 @@
 use std::sync::{Arc, atomic::AtomicBool};
 
 use bytemuck::{Pod, Zeroable};
-use cgmath::Vector3;
+use cgmath::{Point3, Vector3};
 use eframe::egui;
 use egui_wgpu::{WgpuConfiguration, WgpuSetupCreateNew};
 use parameters::{
@@ -165,7 +165,7 @@ fn big_boy_on_collision_course() -> Object {
 
 fn earth_sun_mars_ast() -> Vec<Object> {
     let mut objs = earth_sun_mars_params();
-    objs.append(&mut asteroid_belt(2000));
+    objs.append(&mut asteroid_belt(10000));
     convert_params(objs).into_iter().map(|o| o.into()).collect()
 }
 
@@ -187,6 +187,32 @@ fn asteroid_belt(n_asteroids: usize) -> Vec<StandardParams> {
             mass: rand::random_range(1e-10..1e-6),
             radius: rand::random_range((1e3 / AU)..(1e6 / AU)) as f32,
             color: (col, col, col).into(),
+        });
+    }
+    objs
+}
+
+fn random_cloud(n_objects: usize) -> Vec<Object> {
+    let mut objs = Vec::new();
+    for i in 0..n_objects {
+        let col = 0.5 + rand::random_range(-0.2..0.2);
+        objs.push(Object {
+            name: format!("particle_{i}"),
+            dat: ObjectInfo {
+                pos: Point3::new(
+                    rand::random_range(-1e1..1e1),
+                    rand::random_range(-1e1..1e1),
+                    rand::random_range(-1e1..1e1),
+                ),
+                vel: Vector3::new(
+                    rand::random_range(-1e3..1e3) / AU,
+                    rand::random_range(-1e3..1e3) / AU,
+                    rand::random_range(-1e3..1e3) / AU,
+                ),
+                mass: rand::random_range(1000.0..1000000.0),
+            },
+            color: (col, col, col).into(),
+            radius: rand::random_range((1e3 / AU)..(1e6 / AU)) as f32,
         });
     }
     objs
@@ -242,8 +268,8 @@ fn main() -> anyhow::Result<()> {
     env_logger::init();
     // let window = get_window(1280.0, 640.0)?;
 
-    let mut objects = earth_sun_mars_ast();
-    objects.push(big_boy_on_collision_course());
+    let mut objects = random_cloud(10000);
+    // objects.push(big_boy_on_collision_course());
 
     println!("Running with {objects:?}");
 
@@ -257,7 +283,6 @@ fn main() -> anyhow::Result<()> {
         object_infos.push(obj.dat);
         descs[idx].color = obj.color.into();
     }
-
     let sim = ObjectBuffer::new(object_infos);
 
     let batch = Arc::new(BatchRequest::new(num_objects));

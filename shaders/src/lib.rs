@@ -121,6 +121,7 @@ pub fn circle_vs(
         * Vec4::new(input_instance_size, 0.0, 0.0, 1.0))
     .xy()
     .length();
+    let projected_size = projected_size.max(0.1);
 
     *out_pos = Vec4::from((
         center_proj.xy() + projected_size * raw_shifted,

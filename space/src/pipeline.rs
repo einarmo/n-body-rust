@@ -8,7 +8,8 @@ use wgpu::{
 
 use crate::{
     ShaderConstants,
-    objects::{ObjectInstance, TRAIL_MAX_LENGTH, Vertex},
+    constants::TRAIL_MAX_LENGTH,
+    objects::{ObjectInstance, Vertex},
     render::get_or_init_shader,
 };
 

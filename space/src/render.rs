@@ -12,7 +12,8 @@ use crate::{
     ShaderConstants,
     camera::Camera,
     circle_pipeline::CircleDrawPipeline,
-    objects::{OBJECT_STRIDE, Objects, TRAIL_MAX_LENGTH},
+    constants::TRAIL_MAX_LENGTH,
+    objects::{OBJECT_STRIDE, Objects},
     pipeline::LineDrawPipeline,
 };
 

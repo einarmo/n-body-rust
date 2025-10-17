@@ -18,4 +18,8 @@ pub const MAX_THREADS: usize = 20;
 /// Minimum number of objects per thread.
 pub const OBJECTS_PER_THREAD: usize = 500;
 /// Interval in ticks
-pub const CHECK_INTERVAL: u64 = 10;
+pub const CHECK_INTERVAL: u64 = 1;
+/// 30 seconds of trail
+pub const TRAIL_MAX_LENGTH: usize = 5;
+
+pub const USE_BARNES_HUT: bool = false;

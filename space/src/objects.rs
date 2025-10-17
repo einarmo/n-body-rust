@@ -2,12 +2,10 @@ use std::ops::Range;
 
 use wgpu::{Buffer, Queue, VertexAttribute, VertexBufferLayout};
 
-use crate::Object;
+use crate::{Object, constants::TRAIL_MAX_LENGTH};
 
 pub type Vec3 = [f32; 3];
 
-// 2 minutes of trail
-pub const TRAIL_MAX_LENGTH: usize = 60 * 60 * 2;
 pub const OBJECT_STRIDE: usize = TRAIL_MAX_LENGTH * std::mem::size_of::<Vertex>();
 
 #[repr(C)]
