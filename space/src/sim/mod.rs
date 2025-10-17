@@ -1,9 +1,12 @@
 use std::fmt::Display;
 
-use cgmath::{InnerSpace, Point3, Vector3};
-use rayon::ThreadPool;
+use cgmath::{InnerSpace, Point3, Vector3, Zero};
+use rayon::{ThreadPool, ThreadPoolBuilder};
 
-use crate::constants::{COLLISION_EPSILON, G};
+use crate::{
+    constants::{COLLISION_EPSILON, G, MAX_THREADS, OBJECTS_PER_THREAD, USE_BARNES_HUT},
+    sim::direct::par_add_rec,
+};
 
 pub mod barnes_hut;
 mod direct;
@@ -34,10 +37,43 @@ impl ObjectInfo {
     }
 }
 
+fn compute_target_threads(n_objects: usize) -> usize {
+    assert!(n_objects > 0);
+    n_objects.div_ceil(OBJECTS_PER_THREAD).min(MAX_THREADS)
+}
+
+impl ObjectBuffer {
+    pub fn new(objects: Vec<ObjectInfo>) -> Self {
+        let len = objects.len();
+        let out_buffer = vec![Vector3::<f64>::zero(); len];
+        let n_threads = compute_target_threads(objects.len());
+
+        Self {
+            objects,
+            out_buffer,
+            pool: ThreadPoolBuilder::new()
+                .num_threads(n_threads)
+                .build()
+                .unwrap(),
+        }
+    }
+
+    pub fn exec_iter(&mut self, delta: f64) {
+        // Number of objects per thread is equal to ceil[num_objects / num_threads]
+        self.pool.install(|| {
+            if USE_BARNES_HUT {
+                barnes_hut::iter(&mut self.objects, &mut self.out_buffer, 0.5);
+            } else {
+                direct::iter(&mut self.objects, &mut self.out_buffer);
+            }
+            par_add_rec(&mut self.objects, &mut self.out_buffer, delta);
+        });
+    }
+}
+
 pub struct ObjectBuffer {
     pub objects: Vec<ObjectInfo>,
     out_buffer: Vec<Vector3<f64>>,
-    per_thread: usize,
     pool: ThreadPool,
 }
 

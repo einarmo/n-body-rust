@@ -1,11 +1,9 @@
-use std::time::Instant;
-
 use cgmath::{InnerSpace, Vector3};
-
-use crate::sim::{
-    ObjectInfo,
-    barnes_hut::tree::{FmmTree, ObjectId},
+use rayon::iter::{
+    IndexedParallelIterator, IntoParallelRefIterator, IntoParallelRefMutIterator, ParallelIterator,
 };
+
+use crate::sim::{ObjectInfo, barnes_hut::tree::FmmTree};
 
 mod tree;
 
@@ -16,12 +14,11 @@ pub fn iter(info: &mut [ObjectInfo], out: &mut [Vector3<f64>], theta: f64) {
     // start = Instant::now();
     let theta_sq = theta * theta;
 
-    let mut comp_count = 0;
-
-    for (i, obj) in tree.iter_objects() {
-        let out_acc = &mut out[i.to_index()];
-        compute_acc(i, &tree, obj, out_acc, theta_sq, &mut comp_count);
-    }
+    info.par_iter()
+        .zip(out.par_iter_mut())
+        .for_each(|(obj, out_acc)| {
+            compute_acc(&tree, obj, out_acc, theta_sq);
+        });
     // println!("Acceleration computed in {:?}", start.elapsed());
 
     /* if tree.len() > 10 {
@@ -30,47 +27,33 @@ pub fn iter(info: &mut [ObjectInfo], out: &mut [Vector3<f64>], theta: f64) {
     // panic!("Done");
 }
 
-fn compute_acc(
-    id: ObjectId,
-    tree: &FmmTree<'_>,
-    obj: &ObjectInfo,
-    out: &mut Vector3<f64>,
-    theta_sq: f64,
-    comp_count: &mut u64,
-) {
+fn compute_acc(tree: &FmmTree, obj: &ObjectInfo, out: &mut Vector3<f64>, theta_sq: f64) {
     let estimate = 8 * (tree.len() as f32).ln() as usize;
     let mut stack = Vec::with_capacity(estimate);
-    stack.push(tree.root_id());
+    stack.push(Some(tree.root_id()));
 
     while let Some(node_id) = stack.pop() {
-        let node = tree.get(node_id);
+        let Some(id) = node_id else {
+            continue;
+        };
+
+        let (node, data) = tree.get(id);
+
+        let rel = data.center_mass - obj.pos;
+        let dist_sq = rel.magnitude2();
+        if dist_sq == 0.0 {
+            continue;
+        }
 
         match &node.data {
-            tree::NodeData::External { point } => {
-                if point == &id {
-                    continue;
-                }
-                *comp_count += 1;
-                obj.get_acc_towards(&tree.get_object(*point), out);
+            tree::NodeData::Internal { children, region }
+                if theta_sq * dist_sq < region.size() * region.size() =>
+            {
+                stack.extend(children);
             }
-            tree::NodeData::Internal {
-                children,
-                center_mass,
-                mass,
-            } => {
-                let rel = center_mass - obj.pos;
-                let dist_sq = rel.magnitude2();
-                if dist_sq == 0.0 {
-                    continue;
-                }
-                let size_sq = node.region.size() * node.region.size();
-                if dist_sq * theta_sq < size_sq {
-                    stack.extend(children);
-                } else {
-                    // Treat this node as a single body
-                    *comp_count += 1;
-                    obj.get_acc_towards_raw(center_mass, *mass, out);
-                }
+            _ => {
+                // Treat this node as a single body
+                obj.get_acc_towards_raw(&data.center_mass, data.mass, out);
             }
         }
     }

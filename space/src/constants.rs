@@ -10,7 +10,7 @@ pub const G: f64 = G_ABS * M0 / (AU * AU * AU);
 /// Seconds per computation (really!). Legacy only.
 pub const DELTA: f64 = 10.0;
 /// Padding between all objects to avoid division by zero, 10 meters.
-pub const COLLISION_EPSILON: f64 = 0.0;
+pub const COLLISION_EPSILON: f64 = 1e-15;
 
 // SIMULATION
 /// Hard cap on number of threads to use.
@@ -22,4 +22,4 @@ pub const CHECK_INTERVAL: u64 = 1;
 /// 30 seconds of trail
 pub const TRAIL_MAX_LENGTH: usize = 5;
 
-pub const USE_BARNES_HUT: bool = false;
+pub const USE_BARNES_HUT: bool = true;

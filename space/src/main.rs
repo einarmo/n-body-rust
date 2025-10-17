@@ -268,7 +268,8 @@ fn main() -> anyhow::Result<()> {
     env_logger::init();
     // let window = get_window(1280.0, 640.0)?;
 
-    let mut objects = random_cloud(10000);
+    // let mut objects = random_cloud(10000);
+    let mut objects = earth_sun_mars_ast();
     // objects.push(big_boy_on_collision_course());
 
     println!("Running with {objects:?}");
