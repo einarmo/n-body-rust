@@ -21,6 +21,7 @@ pub struct ShaderConstants {
     pub start_index: u32,
     pub end_index: u32,
     pub use_relative_position: u32,
+    pub min_circle_size: f32,
     pub last_relative_position: Vec3,
 }
 
@@ -121,7 +122,7 @@ pub fn circle_vs(
         * Vec4::new(input_instance_size, 0.0, 0.0, 1.0))
     .xy()
     .length();
-    let projected_size = projected_size.max(0.1);
+    let projected_size = projected_size.max(constants.min_circle_size);
 
     *out_pos = Vec4::from((
         center_proj.xy() + projected_size * raw_shifted,

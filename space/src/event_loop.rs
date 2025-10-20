@@ -15,10 +15,10 @@ use winit::{
 use crate::{
     batch_request::BatchRequest,
     camera::Camera,
-    constants::{CHECK_INTERVAL, DELTA},
+    constants::{BARNES_HUT_COEFF, CHECK_INTERVAL, DELTA, USE_BARNES_HUT},
     objects::Objects,
     render::Renderer,
-    sim::{ObjectBuffer, compute_elapsed_time},
+    sim::{ObjectBuffer, ObjectInfo, SimulationImpl, compute_elapsed_time},
     surface::{SurfaceState, WindowState, get_surface, get_window},
 };
 
@@ -302,7 +302,11 @@ impl ApplicationHandler<()> for SpaceApp {
     }
 }
 
-pub fn run_sim_loop(mut sim: ObjectBuffer, exchange: Arc<BatchRequest>, token: Arc<AtomicBool>) {
+pub fn run_sim_loop<R: SimulationImpl + Send + 'static>(
+    mut sim: ObjectBuffer<R>,
+    exchange: Arc<BatchRequest>,
+    token: Arc<AtomicBool>,
+) {
     let mut i = 0u64;
 
     let mut delta = exchange.delta();
@@ -320,4 +324,18 @@ pub fn run_sim_loop(mut sim: ObjectBuffer, exchange: Arc<BatchRequest>, token: A
         }
     }
     println!("Event loop terminated");
+}
+
+pub fn run_sim_loop_erased(
+    objects: Vec<ObjectInfo>,
+    exchange: Arc<BatchRequest>,
+    token: Arc<AtomicBool>,
+) {
+    if USE_BARNES_HUT {
+        let sim = ObjectBuffer::new(objects, crate::sim::BarnesHutSim(BARNES_HUT_COEFF));
+        run_sim_loop(sim, exchange, token);
+    } else {
+        let sim = ObjectBuffer::new(objects, crate::sim::BruteForceSim);
+        run_sim_loop(sim, exchange, token);
+    }
 }

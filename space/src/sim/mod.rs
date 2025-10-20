@@ -4,7 +4,7 @@ use cgmath::{InnerSpace, Point3, Vector3, Zero};
 use rayon::{ThreadPool, ThreadPoolBuilder};
 
 use crate::{
-    constants::{COLLISION_EPSILON, G, MAX_THREADS, OBJECTS_PER_THREAD, USE_BARNES_HUT},
+    constants::{COLLISION_EPSILON, G, MAX_THREADS, OBJECTS_PER_THREAD},
     sim::direct::par_add_rec,
 };
 
@@ -42,8 +42,8 @@ fn compute_target_threads(n_objects: usize) -> usize {
     n_objects.div_ceil(OBJECTS_PER_THREAD).min(MAX_THREADS)
 }
 
-impl ObjectBuffer {
-    pub fn new(objects: Vec<ObjectInfo>) -> Self {
+impl<R: SimulationImpl + Send> ObjectBuffer<R> {
+    pub fn new(objects: Vec<ObjectInfo>, simulation: R) -> Self {
         let len = objects.len();
         let out_buffer = vec![Vector3::<f64>::zero(); len];
         let n_threads = compute_target_threads(objects.len());
@@ -55,26 +55,45 @@ impl ObjectBuffer {
                 .num_threads(n_threads)
                 .build()
                 .unwrap(),
+            simulation,
         }
     }
 
     pub fn exec_iter(&mut self, delta: f64) {
         // Number of objects per thread is equal to ceil[num_objects / num_threads]
         self.pool.install(|| {
-            if USE_BARNES_HUT {
-                barnes_hut::iter(&mut self.objects, &mut self.out_buffer, 0.5);
-            } else {
-                direct::iter(&mut self.objects, &mut self.out_buffer);
-            }
+            self.simulation
+                .iter(&mut self.objects, &mut self.out_buffer);
             par_add_rec(&mut self.objects, &mut self.out_buffer, delta);
         });
     }
 }
 
-pub struct ObjectBuffer {
+pub trait SimulationImpl {
+    fn iter(&mut self, objects: &mut [ObjectInfo], out_buffer: &mut [Vector3<f64>]);
+}
+
+pub struct BarnesHutSim(pub f64);
+
+impl SimulationImpl for BarnesHutSim {
+    fn iter(&mut self, objects: &mut [ObjectInfo], out_buffer: &mut [Vector3<f64>]) {
+        barnes_hut::iter(objects, out_buffer, self.0);
+    }
+}
+
+pub struct BruteForceSim;
+
+impl SimulationImpl for BruteForceSim {
+    fn iter(&mut self, objects: &mut [ObjectInfo], out_buffer: &mut [Vector3<f64>]) {
+        direct::iter(objects, out_buffer);
+    }
+}
+
+pub struct ObjectBuffer<R> {
     pub objects: Vec<ObjectInfo>,
     out_buffer: Vec<Vector3<f64>>,
     pool: ThreadPool,
+    simulation: R,
 }
 
 const SEC_PER_HOUR: f64 = 60.0 * 60.0;

@@ -12,9 +12,9 @@ use winit::event_loop::{ControlFlow, EventLoop};
 use crate::{
     batch_request::BatchRequest,
     constants::{AU, M0},
-    event_loop::{SpaceApp, run_sim_loop},
+    event_loop::{SpaceApp, run_sim_loop_erased},
     objects::Objects,
-    sim::{ObjectBuffer, ObjectInfo},
+    sim::ObjectInfo,
     ui::SpaceEguiApp,
 };
 
@@ -41,6 +41,7 @@ struct ShaderConstants {
     pub start_index: u32,
     pub end_index: u32,
     pub use_relative_position: u32,
+    pub min_circle_size: f32,
     pub last_relative_position: [f32; 3],
 }
 
@@ -150,6 +151,7 @@ fn earth_sun_mars() -> Vec<Object> {
         .collect()
 }
 
+#[allow(unused)]
 fn big_boy_on_collision_course() -> Object {
     Object {
         name: "big_boy".to_owned(),
@@ -163,12 +165,14 @@ fn big_boy_on_collision_course() -> Object {
     }
 }
 
+#[allow(unused)]
 fn earth_sun_mars_ast() -> Vec<Object> {
     let mut objs = earth_sun_mars_params();
     objs.append(&mut asteroid_belt(10000));
     convert_params(objs).into_iter().map(|o| o.into()).collect()
 }
 
+#[allow(unused)]
 fn asteroid_belt(n_asteroids: usize) -> Vec<StandardParams> {
     let mut objs = Vec::new();
     for i in 0..n_asteroids {
@@ -268,11 +272,12 @@ fn main() -> anyhow::Result<()> {
     env_logger::init();
     // let window = get_window(1280.0, 640.0)?;
 
-    // let mut objects = random_cloud(10000);
-    let mut objects = earth_sun_mars_ast();
+    #[allow(unused_mut)]
+    let mut objects = random_cloud(10000);
+    // let mut objects = earth_sun_mars();
     // objects.push(big_boy_on_collision_course());
 
-    println!("Running with {objects:?}");
+    println!("Running with {} objects", objects.len());
 
     let num_objects = objects.len();
 
@@ -284,14 +289,12 @@ fn main() -> anyhow::Result<()> {
         object_infos.push(obj.dat);
         descs[idx].color = obj.color.into();
     }
-    let sim = ObjectBuffer::new(object_infos);
-
     let batch = Arc::new(BatchRequest::new(num_objects));
     let batch_clone = batch.clone();
     let token = Arc::new(AtomicBool::new(false));
     let token_clone = token.clone();
 
-    let handle = std::thread::spawn(|| run_sim_loop(sim, batch_clone, token_clone));
+    let handle = std::thread::spawn(|| run_sim_loop_erased(object_infos, batch_clone, token_clone));
 
     let egui = true;
     if egui {

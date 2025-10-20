@@ -21,5 +21,9 @@ pub const OBJECTS_PER_THREAD: usize = 500;
 pub const CHECK_INTERVAL: u64 = 1;
 /// 30 seconds of trail
 pub const TRAIL_MAX_LENGTH: usize = 5;
+/// Minimum size of object when rendering circles
+pub const MIN_CIRCLE_SIZE: f32 = 0.05;
 
 pub const USE_BARNES_HUT: bool = true;
+/// Barnes-Hut coefficient (theta). Smaller values = more accurate, but slower.
+pub const BARNES_HUT_COEFF: f64 = 0.3;

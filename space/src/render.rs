@@ -12,7 +12,7 @@ use crate::{
     ShaderConstants,
     camera::Camera,
     circle_pipeline::CircleDrawPipeline,
-    constants::TRAIL_MAX_LENGTH,
+    constants::{MIN_CIRCLE_SIZE, TRAIL_MAX_LENGTH},
     objects::{OBJECT_STRIDE, Objects},
     pipeline::LineDrawPipeline,
 };
@@ -152,6 +152,7 @@ impl Renderer {
             } else {
                 [0.0, 0.0, 0.0]
             },
+            min_circle_size: MIN_CIRCLE_SIZE,
         };
 
         self.line_pipeline.draw(

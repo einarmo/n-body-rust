@@ -40,7 +40,7 @@ impl BatchRequest {
     }
 
     /// Store a sample of each simulated object, as well as the current tick.
-    pub fn store(&self, sim: &ObjectBuffer, tick: u64) {
+    pub fn store<R>(&self, sim: &ObjectBuffer<R>, tick: u64) {
         self.simulation_tick.store(tick, Ordering::Relaxed);
         let mut data = self.sample.lock().unwrap();
         for (buff, obj) in data.iter_mut().zip(sim.objects.iter()) {
