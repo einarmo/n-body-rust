@@ -37,3 +37,14 @@ pub fn iter(objects: &mut [ObjectInfo], out_buffer: &mut [Vector3<f64>]) {
             }
         });
 }
+
+pub fn iter_single_threaded(objects: &mut [ObjectInfo], out_buffer: &mut [Vector3<f64>]) {
+    for (i, (obj, out)) in objects.iter().zip(out_buffer.iter_mut()).enumerate() {
+        for (other_idx, other) in objects.iter().enumerate() {
+            if other_idx == i {
+                continue;
+            }
+            obj.get_acc_towards(other, out);
+        }
+    }
+}

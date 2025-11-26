@@ -23,7 +23,14 @@ rayon = "1.8.0"
 wgpu = { version = "25.0.0", features = ["spirv"] }
 winit = { version = "0.30.11", features = ["rwh_05"] }
 
+[dev-dependencies]
+pprof = { version = "0.15", features = ["flamegraph"] }
+criterion = "0.7"
+
 [build-dependencies]
 # spirv-builder = "0.9"
 spirv-builder = { git = "https://github.com/Rust-GPU/rust-gpu", rev = "8ee9f2f99788134a9c0912238add509539742596" }
 
+[[bench]]
+name = "barnes_hut"
+harness = false

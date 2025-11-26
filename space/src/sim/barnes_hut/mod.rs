@@ -3,15 +3,15 @@ use rayon::iter::{
     IndexedParallelIterator, IntoParallelRefIterator, IntoParallelRefMutIterator, ParallelIterator,
 };
 
-use crate::sim::{ObjectInfo, barnes_hut::tree::FmmTree};
+use crate::sim::ObjectInfo;
 
 mod tree;
 
-pub fn iter(info: &mut [ObjectInfo], out: &mut [Vector3<f64>], theta: f64) {
-    // let mut start = Instant::now();
-    let tree = FmmTree::new(info);
-    // println!("Tree built in {:?}", start.elapsed());
-    // start = Instant::now();
+pub(super) use tree::FmmTree;
+
+pub fn iter(info: &mut [ObjectInfo], out: &mut [Vector3<f64>], tree: &mut FmmTree, theta: f64) {
+    tree.clear();
+    tree.build_tree(info);
     let theta_sq = theta * theta;
 
     info.par_iter()
@@ -19,12 +19,21 @@ pub fn iter(info: &mut [ObjectInfo], out: &mut [Vector3<f64>], theta: f64) {
         .for_each(|(obj, out_acc)| {
             compute_acc(&tree, obj, out_acc, theta_sq);
         });
-    // println!("Acceleration computed in {:?}", start.elapsed());
+}
 
-    /* if tree.len() > 10 {
-        println!("{tree:#?}");
-    } */
-    // panic!("Done");
+pub fn iter_single_threaded(
+    info: &mut [ObjectInfo],
+    out: &mut [Vector3<f64>],
+    tree: &mut FmmTree,
+    theta: f64,
+) {
+    tree.clear();
+    tree.build_tree(info);
+    let theta_sq = theta * theta;
+
+    for (obj, out_acc) in info.iter().zip(out.iter_mut()) {
+        compute_acc(tree, obj, out_acc, theta_sq);
+    }
 }
 
 fn compute_acc(tree: &FmmTree, obj: &ObjectInfo, out: &mut Vector3<f64>, theta_sq: f64) {
@@ -47,13 +56,13 @@ fn compute_acc(tree: &FmmTree, obj: &ObjectInfo, out: &mut Vector3<f64>, theta_s
 
         match &node.data {
             tree::NodeData::Internal { children, region }
-                if theta_sq * dist_sq < region.size() * region.size() =>
+                if theta_sq * dist_sq < region.size_sq() =>
             {
                 stack.extend(children);
             }
             _ => {
                 // Treat this node as a single body
-                obj.get_acc_towards_raw(&data.center_mass, data.mass, out);
+                obj.get_acc_towards_raw(data.mass, rel, dist_sq, out);
             }
         }
     }

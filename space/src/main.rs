@@ -1,57 +1,22 @@
 use std::sync::{Arc, atomic::AtomicBool};
 
-use bytemuck::{Pod, Zeroable};
 use cgmath::{Point3, Vector3};
 use eframe::egui;
 use egui_wgpu::{WgpuConfiguration, WgpuSetupCreateNew};
-use parameters::{
-    AbsoluteCoords, RelativeCoords, RelativeOrAbsolute, StandardParams, convert_params,
+use space::{
+    Object,
+    parameters::{
+        AbsoluteCoords, RelativeCoords, RelativeOrAbsolute, StandardParams, convert_params,
+    },
 };
 use winit::event_loop::{ControlFlow, EventLoop};
 
-use crate::{
-    batch_request::BatchRequest,
+use space::{
+    BatchRequest, ObjectInfo, Objects, SpaceApp,
     constants::{AU, M0},
-    event_loop::{SpaceApp, run_sim_loop_erased},
-    objects::Objects,
-    sim::ObjectInfo,
+    run_sim_loop_erased,
     ui::SpaceEguiApp,
 };
-
-mod batch_request;
-mod camera;
-mod circle_pipeline;
-mod constants;
-mod event_loop;
-mod objects;
-mod parameters;
-mod pipeline;
-mod render;
-mod sim;
-mod surface;
-mod ui;
-
-#[derive(Copy, Clone, Pod, Zeroable)]
-#[repr(C, packed)]
-struct ShaderConstants {
-    pub width: u32,
-    pub height: u32,
-    pub time: u32,
-    pub total_buffer_size: u32,
-    pub start_index: u32,
-    pub end_index: u32,
-    pub use_relative_position: u32,
-    pub min_circle_size: f32,
-    pub last_relative_position: [f32; 3],
-}
-
-#[derive(Debug, Clone)]
-pub struct Object {
-    name: String,
-    dat: ObjectInfo,
-    color: Vector3<f32>,
-    radius: f32,
-}
 
 #[allow(unused)]
 fn earth_sun_basic() -> Vec<Object> {

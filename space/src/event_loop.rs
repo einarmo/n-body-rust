@@ -15,7 +15,7 @@ use winit::{
 use crate::{
     batch_request::BatchRequest,
     camera::Camera,
-    constants::{BARNES_HUT_COEFF, CHECK_INTERVAL, DELTA, USE_BARNES_HUT},
+    constants::{BARNES_HUT_COEFF, BARNES_HUT_CUTOFF, CHECK_INTERVAL, DELTA},
     objects::Objects,
     render::Renderer,
     sim::{ObjectBuffer, ObjectInfo, SimulationImpl, compute_elapsed_time},
@@ -331,8 +331,8 @@ pub fn run_sim_loop_erased(
     exchange: Arc<BatchRequest>,
     token: Arc<AtomicBool>,
 ) {
-    if USE_BARNES_HUT {
-        let sim = ObjectBuffer::new(objects, crate::sim::BarnesHutSim(BARNES_HUT_COEFF));
+    if objects.len() > BARNES_HUT_CUTOFF {
+        let sim = ObjectBuffer::new(objects, crate::sim::BarnesHutSim::new(BARNES_HUT_COEFF));
         run_sim_loop(sim, exchange, token);
     } else {
         let sim = ObjectBuffer::new(objects, crate::sim::BruteForceSim);

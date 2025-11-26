@@ -24,6 +24,7 @@ pub const TRAIL_MAX_LENGTH: usize = 5;
 /// Minimum size of object when rendering circles
 pub const MIN_CIRCLE_SIZE: f32 = 0.05;
 
-pub const USE_BARNES_HUT: bool = true;
+/// Use barnes-hut if there are more than this many objects
+pub const BARNES_HUT_CUTOFF: usize = 1000;
 /// Barnes-Hut coefficient (theta). Smaller values = more accurate, but slower.
 pub const BARNES_HUT_COEFF: f64 = 0.3;

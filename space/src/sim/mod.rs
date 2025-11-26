@@ -28,12 +28,12 @@ impl ObjectInfo {
     #[inline]
     pub fn get_acc_towards_raw(
         &self,
-        other_pos: &Point3<f64>,
         other_mass: f64,
+        rel: Vector3<f64>,
+        mag_sq: f64,
         out: &mut Vector3<f64>,
     ) {
-        let rel = *other_pos - self.pos;
-        *out += rel * other_mass * G / (rel.magnitude2() * rel.magnitude() + COLLISION_EPSILON);
+        *out += rel * other_mass * G / (mag_sq * mag_sq.sqrt() + COLLISION_EPSILON);
     }
 }
 
@@ -71,13 +71,35 @@ impl<R: SimulationImpl + Send> ObjectBuffer<R> {
 
 pub trait SimulationImpl {
     fn iter(&mut self, objects: &mut [ObjectInfo], out_buffer: &mut [Vector3<f64>]);
+
+    fn iter_single_threaded(&mut self, objects: &mut [ObjectInfo], out_buffer: &mut [Vector3<f64>]);
 }
 
-pub struct BarnesHutSim(pub f64);
+pub struct BarnesHutSim {
+    pub theta: f64,
+    pub tree: barnes_hut::FmmTree,
+}
+
+impl BarnesHutSim {
+    pub fn new(theta: f64) -> Self {
+        Self {
+            theta,
+            tree: barnes_hut::FmmTree::new(),
+        }
+    }
+}
 
 impl SimulationImpl for BarnesHutSim {
     fn iter(&mut self, objects: &mut [ObjectInfo], out_buffer: &mut [Vector3<f64>]) {
-        barnes_hut::iter(objects, out_buffer, self.0);
+        barnes_hut::iter(objects, out_buffer, &mut self.tree, self.theta);
+    }
+
+    fn iter_single_threaded(
+        &mut self,
+        objects: &mut [ObjectInfo],
+        out_buffer: &mut [Vector3<f64>],
+    ) {
+        barnes_hut::iter_single_threaded(objects, out_buffer, &mut self.tree, self.theta);
     }
 }
 
@@ -86,6 +108,14 @@ pub struct BruteForceSim;
 impl SimulationImpl for BruteForceSim {
     fn iter(&mut self, objects: &mut [ObjectInfo], out_buffer: &mut [Vector3<f64>]) {
         direct::iter(objects, out_buffer);
+    }
+
+    fn iter_single_threaded(
+        &mut self,
+        objects: &mut [ObjectInfo],
+        out_buffer: &mut [Vector3<f64>],
+    ) {
+        direct::iter_single_threaded(objects, out_buffer);
     }
 }
 

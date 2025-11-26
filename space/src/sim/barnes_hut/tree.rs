@@ -10,6 +10,7 @@ pub struct Region {
     pub x_range: (f64, f64),
     pub y_range: (f64, f64),
     pub z_range: (f64, f64),
+    pub size_sq: f64,
 }
 
 impl Region {
@@ -18,12 +19,12 @@ impl Region {
             x_range: (0.0, 0.0),
             y_range: (0.0, 0.0),
             z_range: (0.0, 0.0),
+            size_sq: 0.0,
         }
     }
 
-    pub fn size(&self) -> f64 {
-        let x_size = (self.x_range.1 - self.x_range.0).abs();
-        x_size
+    pub fn size_sq(&self) -> f64 {
+        self.size_sq
     }
 
     pub fn center(&self) -> Point3<f64> {
@@ -67,6 +68,7 @@ impl FmmNode {
 pub struct FmmTree {
     nodes: Vec<FmmNode>,
     data: Vec<Data>,
+    shared_stack: Vec<Option<NodeId>>,
 }
 
 #[derive(Debug, Clone)]
@@ -76,13 +78,18 @@ pub struct Data {
 }
 
 impl FmmTree {
-    pub fn new(objects: &[ObjectInfo]) -> Self {
-        let mut tree = Self {
+    pub fn new() -> Self {
+        Self {
             nodes: Vec::new(),
             data: Vec::new(),
-        };
-        tree.build_tree(objects);
-        tree
+            shared_stack: Vec::new(),
+        }
+    }
+
+    pub fn clear(&mut self) {
+        self.nodes.clear();
+        self.data.clear();
+        self.shared_stack.clear();
     }
 
     pub fn root_id(&self) -> NodeId {
@@ -97,7 +104,11 @@ impl FmmTree {
         (&self.nodes[id.0], &self.data[id.0])
     }
 
-    fn build_tree(&mut self, objects: &[ObjectInfo]) {
+    pub fn shared_stack(&mut self) -> &mut Vec<Option<NodeId>> {
+        &mut self.shared_stack
+    }
+
+    pub fn build_tree(&mut self, objects: &[ObjectInfo]) {
         // Compute the bounding box of all objects
         let mut min = Point3::new(f64::INFINITY, f64::INFINITY, f64::INFINITY);
         let mut max = Point3::new(f64::NEG_INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY);
@@ -123,6 +134,7 @@ impl FmmTree {
                 x_range: (min.x, max.x),
                 y_range: (min.y, max.y),
                 z_range: (min.z, max.z),
+                size_sq: (min.x - max.x).powi(2),
             },
         );
     }
@@ -198,6 +210,7 @@ fn octants(parent: &Region) -> [Region; 8] {
             x_range: (x_min, x_max),
             y_range: (y_min, y_max),
             z_range: (z_min, z_max),
+            size_sq: (x_max - x_min).powi(2),
         };
     }
     result
