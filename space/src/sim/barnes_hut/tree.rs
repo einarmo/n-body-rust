@@ -123,6 +123,7 @@ impl FmmTree {
 
         let data = objects
             .iter()
+            .filter(|obj| obj.mass > 0.0)
             .map(|obj| Data {
                 center_mass: obj.pos,
                 mass: obj.mass,

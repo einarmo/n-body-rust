@@ -6,6 +6,7 @@ mod event_loop;
 mod objects;
 pub mod parameters;
 mod pipeline;
+pub mod presets;
 mod render;
 mod sim;
 mod surface;

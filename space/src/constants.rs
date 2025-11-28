@@ -16,7 +16,7 @@ pub const COLLISION_EPSILON: f64 = 1e-15;
 /// Hard cap on number of threads to use.
 pub const MAX_THREADS: usize = 20;
 /// Minimum number of objects per thread.
-pub const OBJECTS_PER_THREAD: usize = 500;
+pub const OBJECTS_PER_THREAD: usize = 2000;
 /// Interval in ticks
 pub const CHECK_INTERVAL: u64 = 1;
 /// 30 seconds of trail

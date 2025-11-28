@@ -12,6 +12,13 @@ pub(super) use tree::FmmTree;
 pub fn iter(info: &mut [ObjectInfo], out: &mut [Vector3<f64>], tree: &mut FmmTree, theta: f64) {
     tree.clear();
     tree.build_tree(info);
+    // Edge-case. The Barnes-Hut algorithm does not register massless particles,
+    // which elegantly just means that we skip the computation of attraction _towards_
+    // these. If there are no massive particles at all, we can skip the entire
+    // acceleration computation.
+    if tree.len() == 0 {
+        return;
+    }
     let theta_sq = theta * theta;
 
     info.par_iter()
